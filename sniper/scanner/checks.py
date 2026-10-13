@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..pump.events import TOTAL_SUPPLY
+from ..pump.store import DeployerProfile
 from .models import Finding, Holder, RoundTrip, Severity as S
 
 TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
@@ -32,6 +34,13 @@ class Thresholds:
     roundtrip_critical_pct: float = 30.0
     roundtrip_high_pct: float = 10.0
     roundtrip_medium_pct: float = 5.0
+    # Creator's own initial buy, % of total supply (pump.fun launch)
+    dev_buy_high_pct: float = 20.0
+    dev_buy_medium_pct: float = 10.0
+    # Deployer history
+    serial_launches_high: int = 5   # earlier launches in the last 24h
+    serial_launches_medium: int = 2
+    fresh_wallet_hours: float = 1.0
 
 
 def check_mint(account: dict | None, t: Thresholds) -> list[Finding]:
@@ -175,3 +184,35 @@ def check_roundtrip(rt: RoundTrip, t: Thresholds) -> list[Finding]:
     if loss >= t.roundtrip_medium_pct:
         return [Finding("roundtrip", S.MEDIUM, msg)]
     return [Finding("roundtrip", S.INFO, msg)]
+
+
+def check_launch(dev_tokens: float, t: Thresholds) -> list[Finding]:
+    """The creator's own buy in the create transaction, as % of the fixed 1B supply."""
+    pct = dev_tokens / TOTAL_SUPPLY * 100
+    if pct >= t.dev_buy_high_pct:
+        return [Finding("dev_buy", S.HIGH, f"Creator bought {pct:.1f}% of supply at launch")]
+    if pct >= t.dev_buy_medium_pct:
+        return [Finding("dev_buy", S.MEDIUM, f"Creator bought {pct:.1f}% of supply at launch")]
+    return [Finding("dev_buy", S.INFO, f"Creator bought {pct:.1f}% of supply at launch")]
+
+
+def check_deployer(p: DeployerProfile, t: Thresholds) -> list[Finding]:
+    """Reputation of the creator wallet. History only covers launches this tool has recorded."""
+    findings: list[Finding] = []
+    if p.rugs_total >= 2:
+        findings.append(Finding("deployer_rugs", S.CRITICAL, f"Creator has {p.rugs_total} earlier launches where they dumped and the price collapsed"))
+    elif p.rugs_total == 1:
+        findings.append(Finding("deployer_rugs", S.HIGH, "Creator has 1 earlier launch where they dumped and the price collapsed"))
+
+    if p.launches_24h >= t.serial_launches_high:
+        findings.append(Finding("deployer_serial", S.HIGH, f"Creator launched {p.launches_24h} other tokens in the last 24h"))
+    elif p.launches_24h >= t.serial_launches_medium:
+        findings.append(Finding("deployer_serial", S.MEDIUM, f"Creator launched {p.launches_24h} other tokens in the last 24h"))
+
+    if p.wallet_age_hours is not None and not p.wallet_age_is_lower_bound and p.wallet_age_hours < t.fresh_wallet_hours:
+        findings.append(Finding("deployer_wallet", S.MEDIUM, f"Creator wallet is only {p.wallet_age_hours * 60:.0f} min old"))
+
+    if not findings:
+        known = f"{p.launches_total} earlier launches seen" if p.launches_total else "no earlier launches seen"
+        findings.append(Finding("deployer", S.INFO, f"No deployer red flags ({known}; history is limited to what this tool recorded)"))
+    return findings

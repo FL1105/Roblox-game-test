@@ -53,9 +53,13 @@ Http = Callable[..., Any]
 
 
 class SolanaRpc:
-    def __init__(self, url: str, http: Http = http_json):
+    """`commitment="confirmed"` matters for fresh launches: the RPC default (finalized) lags
+    ~13s, so a just-created mint would look like it doesn't exist."""
+
+    def __init__(self, url: str, http: Http = http_json, commitment: str = "confirmed"):
         self.url = url
         self._http = http
+        self._commitment = commitment
 
     def call(self, method: str, params: list) -> Any:
         resp = self._http(self.url, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
@@ -65,19 +69,25 @@ class SolanaRpc:
         return resp["result"]
 
     def get_account(self, address: str) -> dict | None:
-        return self.call("getAccountInfo", [address, {"encoding": "jsonParsed"}])["value"]
+        cfg = {"encoding": "jsonParsed", "commitment": self._commitment}
+        return self.call("getAccountInfo", [address, cfg])["value"]
 
     def get_multiple_accounts(self, addresses: list[str]) -> list[dict | None]:
+        cfg = {"encoding": "jsonParsed", "commitment": self._commitment}
         out: list[dict | None] = []
         for i in range(0, len(addresses), 100):  # RPC limit per call
-            out += self.call("getMultipleAccounts", [addresses[i : i + 100], {"encoding": "jsonParsed"}])["value"]
+            out += self.call("getMultipleAccounts", [addresses[i : i + 100], cfg])["value"]
         return out
 
     def get_token_supply(self, mint: str) -> int:
-        return int(self.call("getTokenSupply", [mint])["value"]["amount"])
+        return int(self.call("getTokenSupply", [mint, {"commitment": self._commitment}])["value"]["amount"])
 
     def get_largest_accounts(self, mint: str) -> list[dict]:
-        return self.call("getTokenLargestAccounts", [mint])["value"]
+        return self.call("getTokenLargestAccounts", [mint, {"commitment": self._commitment}])["value"]
+
+    def get_signatures(self, address: str, limit: int = 100) -> list[dict]:
+        """Most recent signatures for an address, newest first; each has `blockTime` (s) or None."""
+        return self.call("getSignaturesForAddress", [address, {"limit": limit, "commitment": self._commitment}])
 
 
 class DexScreener:

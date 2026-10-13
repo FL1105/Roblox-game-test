@@ -194,6 +194,25 @@ class FakeNetwork:
         raise AssertionError(method)
 
 
+class Commitment(unittest.TestCase):
+    """The RPC default (finalized) lags ~13s, so a just-launched mint would look nonexistent."""
+
+    def test_every_rpc_read_asks_for_confirmed(self):
+        payloads = []
+        net = FakeNetwork()
+
+        def recording(url, data=None, timeout=15):
+            if data is not None:
+                payloads.append(data)
+            return net(url, data, timeout)
+
+        scan_token(MINT, SolanaRpc("http://rpc", recording), now_ms=10**12)
+        self.assertGreaterEqual(len(payloads), 4)
+        for payload in payloads:
+            configs = [p for p in payload["params"] if isinstance(p, dict)]
+            self.assertTrue(any(c.get("commitment") == "confirmed" for c in configs), payload["method"])
+
+
 class EndToEnd(unittest.TestCase):
     def scan(self, net, **kw):
         return scan_token(MINT, SolanaRpc("http://rpc", net), DexScreener(net), JupiterQuotes(net), now_ms=10**12, **kw)

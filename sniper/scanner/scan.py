@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import re
 import time
+from dataclasses import replace
 
-from .checks import Thresholds, check_holders, check_market, check_mint, check_roundtrip
+from ..pump.store import DeployerProfile
+from .checks import (
+    Thresholds,
+    check_deployer,
+    check_holders,
+    check_launch,
+    check_market,
+    check_mint,
+    check_roundtrip,
+)
 from .models import Finding, Holder, ScanResult, Severity
 from .sources import DexScreener, JupiterQuotes, SolanaRpc, SourceError
 
@@ -52,12 +62,32 @@ def resolve_holders(rpc: SolanaRpc, mint: str) -> list[Holder]:
     return holders
 
 
+WALLET_LOOKUP_LIMIT = 100
+
+
+def with_wallet_activity(rpc: SolanaRpc, wallet: str, profile: DeployerProfile, now_s: float) -> DeployerProfile:
+    """Add the wallet's age and activity, from its most recent signatures, to a deployer profile."""
+    sigs = rpc.get_signatures(wallet, WALLET_LOOKUP_LIMIT)
+    times = [s["blockTime"] for s in sigs if s.get("blockTime")]
+    if not times:
+        return profile
+    return replace(
+        profile,
+        wallet_age_hours=(now_s - min(times)) / 3600,
+        # A full page means older history exists, so the real age is at least this.
+        wallet_age_is_lower_bound=len(sigs) >= WALLET_LOOKUP_LIMIT,
+        wallet_tx_visible=len(sigs),
+    )
+
+
 def scan_token(
     mint: str,
     rpc: SolanaRpc,
     dex: DexScreener | None = None,
     jupiter: JupiterQuotes | None = None,
     *,
+    deployer: DeployerProfile | None = None,
+    dev_tokens: float | None = None,
     thresholds: Thresholds | None = None,
     trade_lamports: int = 100_000_000,
     now_ms: int | None = None,
@@ -83,6 +113,10 @@ def scan_token(
         return result  # not a real token mint; nothing else is meaningful
 
     run("holders", lambda: check_holders(resolve_holders(rpc, mint), rpc.get_token_supply(mint), t))
+    if dev_tokens is not None:
+        run("launch", lambda: check_launch(dev_tokens, t))
+    if deployer is not None:
+        run("deployer", lambda: check_deployer(deployer, t))
     if dex:
         run("market", lambda: check_market(dex.pairs(mint), now_ms, t))
     if jupiter:
