@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+from typing import Callable
 
 from ..pump.curve import CurveState, quote_buy, quote_sell
 from ..pump.events import TOTAL_SUPPLY, Event, NewToken, ScanNote, Trade
@@ -26,6 +27,7 @@ class Strategy:
     max_hold_s: float = 300.0
     size_sol: float = 0.1           # fixed size, unless size_frac is set
     size_frac: float | None = None  # fraction of equity per trade (compounding)
+    size_caution_sol: float | None = None  # smaller size for CAUTION verdicts (None = same as size_sol)
     max_open: int = 3
     latency_ms: int = 800
     fee_bps: float = 100            # pump.fun fee: verify the current rate
@@ -75,8 +77,10 @@ class EngineResult:
 
 
 class PaperEngine:
-    def __init__(self, strategy: Strategy, start_sol: float = 1.0):
+    def __init__(self, strategy: Strategy, start_sol: float = 1.0, on_note: Callable[[int, str, str, str], None] | None = None):
         self.s = strategy
+        self.enabled = True  # when False no new positions open; open ones are still managed
+        self.on_note = on_note  # (t_ms, kind, mint, text): entry / exit / skip
         self.start_sol = start_sol
         self.cash = start_sol
         self.curve: dict[str, CurveState] = {}
@@ -88,6 +92,14 @@ class PaperEngine:
         self.equity_curve = [start_sol]
         self.skipped: Counter = Counter()
         self.last_t = 0
+
+    def _note(self, t: int, kind: str, mint: str, text: str) -> None:
+        if self.on_note:
+            self.on_note(t, kind, mint, text)
+
+    def _skip(self, t: int, mint: str, reason: str) -> None:
+        self.skipped[reason] += 1
+        self._note(t, "skip", mint, f"skipped ({reason})")
 
     # ---- public ----
     def on_event(self, ev: Event) -> None:
@@ -105,7 +117,7 @@ class PaperEngine:
                 if ev.verdict in self.s.allowed_verdicts:
                     self._consider_entry(ev.mint, ev.t)
                 else:
-                    self.skipped[f"verdict:{ev.verdict}"] += 1
+                    self._skip(ev.t, ev.mint, f"verdict:{ev.verdict}")
         elif isinstance(ev, Trade):
             self._on_trade(ev)
 
@@ -125,28 +137,35 @@ class PaperEngine:
         launch, state = self.launch[mint], self.curve[mint]
         if mint in self.pending or mint in self.positions:
             return
-        if launch.dev_tokens / TOTAL_SUPPLY * 100 > self.s.max_dev_buy_pct:
-            self.skipped["dev_buy"] += 1
+        if not self.enabled:
+            self._skip(decision_t, mint, "bot_stopped")
+        elif launch.dev_tokens / TOTAL_SUPPLY * 100 > self.s.max_dev_buy_pct:
+            self._skip(decision_t, mint, "dev_buy")
         elif state.mcap_sol > self.s.max_entry_mcap_sol:
-            self.skipped["mcap_too_high"] += 1
+            self._skip(decision_t, mint, "mcap_too_high")
         elif len(self.positions) + len(self.pending) >= self.s.max_open:
-            self.skipped["max_open"] += 1
+            self._skip(decision_t, mint, "max_open")
         else:
             self.pending[mint] = decision_t + self.s.latency_ms
 
     def _open(self, mint: str, t: int) -> None:
         state = self.curve[mint]
         if state.mcap_sol > self.s.max_entry_mcap_sol:
-            self.skipped["mcap_too_high_at_fill"] += 1
+            self._skip(t, mint, "mcap_too_high_at_fill")
             return
         equity = self.cash + sum(p.sol_in for p in self.positions.values())
-        size = equity * self.s.size_frac if self.s.size_frac is not None else self.s.size_sol
+        scan = self.scans.get(mint)
+        fixed = self.s.size_sol
+        if self.s.size_caution_sol is not None and scan is not None and scan.verdict == "CAUTION":
+            fixed = self.s.size_caution_sol
+        size = equity * self.s.size_frac if self.s.size_frac is not None else fixed
         if self.cash < size + self.s.tx_cost_sol or size <= 0:
-            self.skipped["no_cash"] += 1
+            self._skip(t, mint, "no_cash")
             return
         tokens = quote_buy(state, size, self.s.fee_bps)
         self.cash -= size + self.s.tx_cost_sol
         self.positions[mint] = Position(mint, self.launch[mint].creator, t, size, tokens, state.mcap_sol)
+        self._note(t, "entry", mint, f"bought {size:.3f} SOL at {state.mcap_sol:.1f} SOL mcap")
 
     # ---- exits ----
     def _on_trade(self, tr: Trade) -> None:
@@ -197,6 +216,7 @@ class PaperEngine:
             ClosedTrade(pos.mint, pos.entry_t, t, pos.sol_in, proceeds, pnl, pnl / pos.sol_in * 100, reason, pos.entry_mcap, state.mcap_sol)
         )
         self.equity_curve.append(self.cash + sum(p.sol_in for p in self.positions.values()))
+        self._note(t, "exit", pos.mint, f"sold ({reason}) {pnl / pos.sol_in * 100:+.1f}% / {pnl:+.4f} SOL")
 
 
 def replay(events: list[Event], strategy: Strategy, start_sol: float = 1.0) -> EngineResult:

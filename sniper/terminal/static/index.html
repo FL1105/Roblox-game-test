@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en" data-theme="emerald">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launch Sniper · Paper Terminal</title>
+<style>
+:root{
+  --bg:#080d12; --card:#0d151b; --card2:#0a1116; --line:#16252d; --line2:#1d313b;
+  --text:#e6efee; --muted:#7a8d95; --dim:#566770;
+  --red:#ff5b6b; --amber:#f5b84a; --good:#2ee37f;
+  --accent:#2ee37f; --accent-ink:#04140b;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+}
+:root[data-theme="cyan"]{--accent:#38cfff;--accent-ink:#031620;--good:#38cfff}
+:root[data-theme="amber"]{--accent:#f5b84a;--accent-ink:#1b1203;--good:#f5b84a}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(1100px 500px at 10% -10%,color-mix(in srgb,var(--accent) 9%,transparent),transparent 60%),radial-gradient(900px 500px at 100% 0,color-mix(in srgb,var(--accent) 5%,transparent),transparent 55%),var(--bg);
+  color:var(--text);font:14px/1.4 var(--sans);min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+.app{max-width:1520px;margin:0 auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:14px}
+
+/* header */
+.top{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:14px 18px;border:1px solid var(--line);border-radius:20px;
+  background:linear-gradient(120deg,color-mix(in srgb,var(--accent) 7%,transparent),transparent 45%),var(--card)}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 12%,#0a1116);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+.brand h1{margin:0;font-size:18px;letter-spacing:.2px}
+.brand small{display:block;font:10.5px var(--mono);letter-spacing:.2em;color:var(--dim);margin-top:2px}
+.nav{display:flex;gap:4px;padding:5px;border:1px solid var(--line);border-radius:14px;background:var(--card2)}
+.nav button{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid transparent;background:none;color:var(--muted);cursor:pointer}
+.nav button:hover{color:var(--text)}
+.nav button.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent);background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.badge{font:11px var(--mono);padding:1px 7px;border-radius:99px;background:#17252d;color:var(--muted)}
+.spacer{flex:1}
+.pill{display:flex;align-items:center;gap:9px;padding:8px 14px;border:1px solid var(--line2);border-radius:99px;background:var(--card2);font:11px var(--mono);letter-spacing:.12em;color:var(--muted)}
+.pill b{color:var(--text);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.dot.ok{background:var(--good);box-shadow:0 0 8px var(--good)}.dot.warn{background:var(--amber)}.dot.bad{background:var(--red)}
+.icons{display:flex;gap:8px}
+.ibtn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line2);background:var(--card2);color:var(--text);display:grid;place-items:center;cursor:pointer}
+.ibtn:hover{border-color:color-mix(in srgb,var(--accent) 50%,transparent);color:var(--accent)}
+.notice{padding:9px 14px;border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);border-radius:12px;background:color-mix(in srgb,var(--amber) 8%,transparent);color:var(--amber);font:12px var(--mono);letter-spacing:.04em}
+.notice[hidden]{display:none}
+
+/* layout */
+.layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:14px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:14px}
+.card{border:1px solid var(--line);border-radius:18px;background:var(--card);padding:16px}
+.card.hl{border-color:color-mix(in srgb,var(--accent) 35%,transparent);background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 10%,transparent),transparent 70%),var(--card)}
+.card h2{margin:0;font-size:15px;display:flex;align-items:center;gap:9px}
+.cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.lbl{display:block;font:10.5px var(--mono);letter-spacing:.16em;color:var(--dim);text-transform:uppercase;margin:14px 0 7px}
+.wallet{display:flex;align-items:center;gap:12px}
+.wicon{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);background:#0a1116}
+.wallet b{display:block;font-size:15px}.wallet span{font-size:12px;color:var(--muted)}
+.safe{margin-top:12px;padding:10px 12px;border:1px dashed var(--line2);border-radius:12px;font-size:12px;color:var(--muted)}
+.state{font:10.5px var(--mono);letter-spacing:.14em;padding:5px 11px;border-radius:99px;border:1px solid}
+.state.off{color:var(--red);border-color:color-mix(in srgb,var(--red) 55%,transparent);background:color-mix(in srgb,var(--red) 10%,transparent)}
+.state.on{color:var(--good);border-color:color-mix(in srgb,var(--good) 55%,transparent);background:color-mix(in srgb,var(--good) 10%,transparent)}
+.btnrow{display:grid;grid-template-columns:1.25fr 1fr;gap:10px}
+.btn{display:flex;align-items:center;justify-content:center;gap:9px;padding:14px 12px;border-radius:13px;border:1px solid transparent;font-weight:700;cursor:pointer;line-height:1.15;text-align:center}
+.btn.go{background:var(--accent);color:var(--accent-ink)}
+.btn.go:hover:not(:disabled){filter:brightness(1.1)}
+.btn.stop{background:#2a1519;color:#ff8c98;border-color:#3a1c22}
+.btn.stop:disabled{opacity:.45;cursor:not-allowed}
+.btn:disabled.go{opacity:.4;cursor:not-allowed}
+.btn.ghost{background:var(--card2);border-color:var(--line2);color:var(--text);font-weight:600}
+.btn.ghost:hover{border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+.inp{width:100%;padding:12px 13px;border-radius:11px;border:1px solid var(--line2);background:#091016;color:var(--text);font-family:var(--mono);outline:none}
+.inp:focus{border-color:color-mix(in srgb,var(--accent) 65%,transparent)}
+.range{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;color:var(--dim);font-size:12px}
+.adv{margin-top:14px;width:100%}
+.advbox{display:none;margin-top:6px}.advbox.open{display:block}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chk{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--muted)}
+.chk input{accent-color:var(--accent)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{padding:13px;border:1px solid var(--line);border-radius:13px;background:var(--card2)}
+.tile .v{font:600 20px var(--mono)}.tile .k{font:10px var(--mono);letter-spacing:.14em;color:var(--dim);margin-top:4px}
+.pos{color:var(--good)}.neg{color:var(--red)}.mut{color:var(--muted)}
+select.inp{width:auto;padding:7px 10px;font-size:13px}
+.spark{position:relative;margin-top:14px}
+.spark svg{width:100%;height:70px;display:block}
+.spark .tt{position:absolute;top:-4px;pointer-events:none;background:#0a1116;border:1px solid var(--line2);border-radius:8px;padding:4px 8px;font:11px var(--mono);white-space:nowrap;display:none}
+
+/* table */
+.main{min-height:640px;padding:0;overflow:hidden;display:flex;flex-direction:column}
+.scroll{overflow-x:auto;flex:1;display:flex;flex-direction:column}
+.trow{display:grid;grid-template-columns:1.5fr .8fr 1.5fr .8fr 1.1fr 1fr .9fr;gap:10px;align-items:center;padding:12px 18px;min-width:820px}
+.thead{font:10.5px var(--mono);letter-spacing:.16em;color:var(--dim);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)}
+.trow:not(.thead){border-bottom:1px solid #111d24}
+.trow:not(.thead):hover{background:color-mix(in srgb,var(--accent) 4%,transparent)}
+.tok b{display:block}.tok small{color:var(--dim);font:11px var(--mono)}
+.mono{font-family:var(--mono);font-size:13px}
+.chip{display:inline-block;justify-self:start;font:10.5px var(--mono);letter-spacing:.1em;padding:4px 9px;border-radius:99px;border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+.chip.g{color:var(--good);border-color:color-mix(in srgb,var(--good) 50%,transparent);background:color-mix(in srgb,var(--good) 9%,transparent)}
+.chip.r{color:var(--red);border-color:color-mix(in srgb,var(--red) 50%,transparent);background:color-mix(in srgb,var(--red) 9%,transparent)}
+.chip.a{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 50%,transparent);background:color-mix(in srgb,var(--amber) 9%,transparent)}
+.acts{display:flex;gap:6px}
+.sm{padding:5px 9px;border-radius:8px;border:1px solid var(--line2);background:var(--card2);color:var(--muted);font:11px var(--mono);cursor:pointer;text-decoration:none}
+.sm:hover{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:60px 20px;text-align:center}
+.empty .ic{width:64px;height:64px;border-radius:18px;display:grid;place-items:center;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);background:color-mix(in srgb,var(--accent) 8%,#0a1116)}
+.empty h3{margin:6px 0 0;font-size:20px}.empty p{margin:0;color:var(--muted)}
+.empty .btn{margin-top:10px;padding:12px 26px}
+
+/* logs / profile */
+.view{display:none}.view.on{display:block}
+.logs{padding:8px 0;font:12.5px var(--mono);max-height:78vh;overflow:auto}
+.logline{display:grid;grid-template-columns:86px 74px 1fr;gap:12px;padding:6px 18px;border-bottom:1px solid #0f1a20}
+.logline .t{color:var(--dim)}.logline .k{letter-spacing:.1em;font-size:10.5px;padding-top:2px;color:var(--dim)}
+.logline.entry .k,.logline.entry .x{color:var(--good)}.logline.exit .k{color:var(--amber)}
+.logline.skip .x,.logline.launch .x{color:var(--muted)}
+.prof{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:8px 16px;font-size:13px}.kv span:nth-child(odd){color:var(--muted)}.kv span:nth-child(even){font-family:var(--mono);text-align:right}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:12px;background:#1a0f12;border:1px solid color-mix(in srgb,var(--red) 55%,transparent);color:#ff9aa5;font:12.5px var(--mono);display:none;z-index:9}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:920px){.layout{grid-template-columns:1fr}.spacer{display:none}.top{gap:12px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="logo" id="logo"></div>
+      <div><h1>Launch Sniper</h1><small>PAPER TRADING TERMINAL</small></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-view="dashboard" class="on"><span data-ic="chart"></span>Dashboard</button>
+      <button data-view="logs"><span data-ic="term"></span>Logs <span class="badge" id="logcount">0</span></button>
+      <button data-view="profile"><span data-ic="user"></span>Profile</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="pill" id="modepill"><span class="dot" id="modedot"></span><span id="modetext">CONNECTING</span></div>
+    <div class="icons">
+      <button class="ibtn" id="b-home" title="Dashboard" aria-label="Dashboard"><span data-ic="home"></span></button>
+      <button class="ibtn" id="b-theme" title="Change accent colour" aria-label="Change accent colour"><span data-ic="palette"></span></button>
+      <button class="ibtn" id="b-refresh" title="Refresh now" aria-label="Refresh now"><span data-ic="refresh"></span></button>
+      <button class="ibtn" id="b-full" title="Fullscreen" aria-label="Fullscreen"><span data-ic="full"></span></button>
+    </div>
+  </header>
+  <div class="notice" id="simnote" hidden>SIMULATED DATA: this market is made up. Profit and loss here says nothing about real trading or about how accurate the scanner is.</div>
+
+  <main class="layout">
+    <aside class="stack">
+      <section class="card hl">
+        <div class="wallet">
+          <div class="wicon"><span data-ic="wallet"></span></div>
+          <div><b>Paper Wallet</b><span id="walletline">simulated bankroll</span></div>
+        </div>
+        <div class="safe">No wallet, private key or signature is ever requested here. Every trade is simulated.</div>
+      </section>
+
+      <section class="card">
+        <div class="cardhead"><h2><span data-ic="bot"></span>Bot Control</h2><span class="state off" id="state">STOPPED</span></div>
+        <div class="btnrow">
+          <button class="btn go" id="start"><span data-ic="play"></span>Start<br>Trading</button>
+          <button class="btn stop" id="stop" disabled><span data-ic="stopsq"></span>Stop Bot</button>
+        </div>
+        <label class="lbl" for="amount_min">Amount range (SOL)</label>
+        <div class="range"><input class="inp" id="amount_min" inputmode="decimal" aria-label="Minimum amount in SOL"><span>to</span><input class="inp" id="amount_max" inputmode="decimal" aria-label="Maximum amount in SOL"></div>
+        <label class="lbl" for="take_profit">Take profit (%)</label>
+        <input class="inp" id="take_profit" inputmode="decimal">
+        <label class="lbl" for="stop_loss">Stop loss (%)</label>
+        <input class="inp" id="stop_loss" inputmode="decimal">
+        <button class="btn ghost adv" id="advbtn"><span data-ic="sliders"></span>Advanced Settings</button>
+        <div class="advbox" id="advbox">
+          <div class="grid2">
+            <div><label class="lbl" for="max_hold_s">Max hold (s)</label><input class="inp" id="max_hold_s" inputmode="decimal"></div>
+            <div><label class="lbl" for="max_open">Max open</label><input class="inp" id="max_open" inputmode="decimal"></div>
+            <div><label class="lbl" for="latency_ms">Latency (ms)</label><input class="inp" id="latency_ms" inputmode="decimal"></div>
+            <div><label class="lbl" for="fee_bps">Fee (bps)</label><input class="inp" id="fee_bps" inputmode="decimal"></div>
+            <div><label class="lbl" for="tx_cost_sol">Tx cost (SOL)</label><input class="inp" id="tx_cost_sol" inputmode="decimal"></div>
+            <div><label class="lbl" for="max_dev_buy_pct">Max dev buy (%)</label><input class="inp" id="max_dev_buy_pct" inputmode="decimal"></div>
+          </div>
+          <label class="lbl" for="max_entry_mcap_sol">Max entry market cap (SOL)</label>
+          <input class="inp" id="max_entry_mcap_sol" inputmode="decimal">
+          <span class="lbl">Buy these scanner verdicts</span>
+          <label class="chk"><input type="checkbox" class="verdict" value="PASS"> PASS</label>
+          <label class="chk"><input type="checkbox" class="verdict" value="CAUTION"> CAUTION</label>
+          <label class="chk"><input type="checkbox" class="verdict" value="AVOID"> AVOID</label>
+          <label class="chk"><input type="checkbox" id="exit_on_creator_sell"> Exit when the creator sells</label>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="cardhead"><h2><span data-ic="chart"></span>Trading Stats</h2>
+          <select class="inp" id="range" aria-label="Stats window"><option value="24h">24 Hours</option><option value="all">All time</option></select></div>
+        <div class="tiles">
+          <div class="tile"><div class="v" id="s-trades">0</div><div class="k">TOTAL TRADES</div></div>
+          <div class="tile"><div class="v" id="s-wins">0</div><div class="k">SUCCESSFUL</div></div>
+          <div class="tile"><div class="v" id="s-rate">0%</div><div class="k">WIN RATE</div></div>
+          <div class="tile"><div class="v" id="s-pnl">0.000</div><div class="k">TOTAL P&amp;L SOL</div></div>
+        </div>
+        <span class="lbl">Paper equity (SOL)</span>
+        <div class="spark" id="spark-small"></div>
+      </section>
+    </aside>
+
+    <section>
+      <div class="view on" id="view-dashboard">
+        <div class="card main">
+          <div class="scroll">
+            <div class="trow thead"><span>TOKEN</span><span>TIME</span><span>STATUS</span><span>AMOUNT</span><span>P&amp;L</span><span>LIQUIDITY</span><span>ACTIONS</span></div>
+            <div id="rows"></div>
+            <div class="empty" id="empty">
+              <div class="ic"><span data-ic="search" data-size="30"></span></div>
+              <h3>Waiting for Tokens</h3>
+              <p id="emptytext">Waiting for new tokens to start trading</p>
+              <button class="btn go" id="start2"><span data-ic="play"></span>Start Bot</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="view" id="view-logs"><div class="card main"><div class="logs" id="logs"></div></div></div>
+
+      <div class="view" id="view-profile">
+        <div class="prof">
+          <div class="card"><div class="cardhead"><h2>Paper account</h2></div><div class="kv" id="acct"></div>
+            <div class="spark" id="spark-big" style="margin-top:18px"></div>
+            <button class="btn ghost" id="reset" style="margin-top:16px;width:100%">Reset paper account</button></div>
+          <div class="card"><div class="cardhead"><h2>Why trades were skipped</h2></div><div class="kv" id="skips"></div></div>
+          <div class="card"><div class="cardhead"><h2>What this is</h2></div>
+            <p class="mut" style="margin:0;font-size:13px">A paper-trading simulator. It models the pump.fun fee, a per-transaction cost and a delay between decision and fill, but not other bots racing you or dropped transactions. Real results would be worse than what you see here.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="alert"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const IC = {
+  chart:'<path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6"/>', term:'<path d="M4 6l5 5-5 5M12 18h8"/>', user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/>',
+  home:'<path d="M4 11l8-7 8 7v9H4z"/>', palette:'<path d="M12 3a9 9 0 100 18c1.5 0 2-1 1.5-2s0-2 1.5-2h2a3 3 0 003-3c0-5-4-11-8-11z"/><circle cx="8" cy="11" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16" cy="11" r="1"/>',
+  refresh:'<path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/>', full:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', wallet:'<path d="M3 7h16a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2zM3 7l2-3h12M16 14h2"/>',
+  bot:'<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4M9 13h.01M15 13h.01M3 13v3M21 13v3"/>', play:'<path d="M7 5l12 7-12 7z" fill="currentColor"/>', stopsq:'<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>',
+  sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/>', search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'
+};
+const svg = (name, size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[name]}</svg>`;
+document.querySelectorAll("[data-ic]").forEach(n => { n.innerHTML = svg(n.dataset.ic, +(n.dataset.size || 18)); n.style.display = "inline-flex"; });
+$("logo").innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4c3 0 6 1 6 1s1 3 1 6c-2 3-5 5-8 6l-3-3c1-3 3-6 4-10z"/><path d="M7 14l-3 1 1 3 3 1M14.5 8.5h.01"/></svg>';
+
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+const fmt = (x, d = 3) => (x == null ? "—" : Number(x).toFixed(d));
+const signed = (x, d = 3) => (x == null ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(d));
+const hhmmss = (ms) => ms ? new Date(ms).toLocaleTimeString([], {hour12: false}) : "—";
+const MINT_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+let last = null, settingsLoaded = false, view = "dashboard";
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", 3500); }
+async function api(path, body) {
+  const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || "request failed"); return j;
+}
+
+/* ---- navigation / header ---- */
+function show(v) { view = v; document.querySelectorAll(".view").forEach(n => n.classList.toggle("on", n.id === "view-" + v));
+  document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.view === v)); }
+document.querySelectorAll("#nav button").forEach(b => b.onclick = () => show(b.dataset.view));
+$("b-home").onclick = () => show("dashboard");
+$("b-refresh").onclick = () => poll();
+$("b-full").onclick = () => { try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); } catch (e) {} };
+const THEMES = ["emerald", "cyan", "amber"];
+function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (e) {} }
+try { const t = localStorage.getItem("theme"); if (THEMES.includes(t)) setTheme(t); } catch (e) {}
+$("b-theme").onclick = () => setTheme(THEMES[(THEMES.indexOf(document.documentElement.dataset.theme) + 1) % THEMES.length]);
+$("advbtn").onclick = () => $("advbox").classList.toggle("open");
+
+/* ---- bot control & settings ---- */
+async function setRunning(r) { try { await api("/api/bot", {running: r}); poll(); } catch (e) { toast(e.message); } }
+$("start").onclick = $("start2").onclick = () => setRunning(true);
+$("stop").onclick = () => setRunning(false);
+$("reset").onclick = async () => { if (confirm("Reset the paper account, token table and logs?")) { await api("/api/reset"); poll(); } };
+$("range").onchange = () => poll();
+
+const NUM_FIELDS = ["amount_min", "amount_max", "take_profit", "stop_loss", "max_hold_s", "max_open", "latency_ms", "fee_bps", "tx_cost_sol", "max_dev_buy_pct", "max_entry_mcap_sol"];
+function fillSettings(s) {
+  NUM_FIELDS.forEach(k => { if (document.activeElement !== $(k)) $(k).value = s[k]; });
+  document.querySelectorAll(".verdict").forEach(c => c.checked = s.verdicts.includes(c.value));
+  $("exit_on_creator_sell").checked = s.exit_on_creator_sell;
+}
+function collectSettings() {
+  const out = {};
+  for (const k of NUM_FIELDS) { const v = $(k).value.trim(); out[k] = v === "" ? NaN : Number(v); }
+  out.verdicts = [...document.querySelectorAll(".verdict")].filter(c => c.checked).map(c => c.value);
+  out.exit_on_creator_sell = $("exit_on_creator_sell").checked;
+  return out;
+}
+let saveTimer;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const body = collectSettings();
+    if (Object.values(body).some(v => typeof v === "number" && Number.isNaN(v))) return toast("Enter a number in every box");
+    try { await api("/api/settings", body); } catch (e) { toast(e.message); settingsLoaded = false; }
+  }, 500);
+}
+[...NUM_FIELDS.map($), ...document.querySelectorAll(".verdict"), $("exit_on_creator_sell")].forEach(n => n.addEventListener("change", scheduleSave));
+
+/* ---- equity sparkline: one series, thin line, hover readout, no legend needed ---- */
+function sparkline(host, ys, start) {
+  host.replaceChildren();
+  const NS = "http://www.w3.org/2000/svg", W = 300, H = 70, pad = 6;
+  const s = document.createElementNS(NS, "svg"); s.setAttribute("viewBox", `0 0 ${W} ${H}`); s.setAttribute("preserveAspectRatio", "none");
+  s.setAttribute("role", "img"); s.setAttribute("aria-label", "Paper equity over closed trades");
+  const lo = Math.min(...ys, start), hi = Math.max(...ys, start), span = (hi - lo) || 1;
+  const X = (i) => ys.length < 2 ? W / 2 : pad + i * (W - 2 * pad) / (ys.length - 1), Y = (v) => H - pad - (v - lo) / span * (H - 2 * pad);
+  const base = document.createElementNS(NS, "line");
+  Object.entries({x1: 0, x2: W, y1: Y(start), y2: Y(start), stroke: "var(--line2)", "stroke-dasharray": "3 4", "vector-effect": "non-scaling-stroke"}).forEach(([k, v]) => base.setAttribute(k, v));
+  s.appendChild(base);
+  if (ys.length > 1) {
+    const line = document.createElementNS(NS, "polyline");
+    Object.entries({points: ys.map((v, i) => `${X(i)},${Y(v)}`).join(" "), fill: "none", stroke: "var(--accent)", "stroke-width": 2, "stroke-linejoin": "round", "vector-effect": "non-scaling-stroke"}).forEach(([k, v]) => line.setAttribute(k, v));
+    s.appendChild(line);
+  }
+  host.appendChild(s);
+  const tt = el("div", "tt"); host.appendChild(tt);
+  host.onmousemove = (e) => {
+    const r = host.getBoundingClientRect(), i = Math.max(0, Math.min(ys.length - 1, Math.round((e.clientX - r.left) / r.width * (ys.length - 1))));
+    tt.textContent = ys.length > 1 ? `after trade ${i}: ${ys[i].toFixed(4)} SOL` : `${ys[0].toFixed(4)} SOL (no trades yet)`;
+    tt.style.display = "block"; tt.style.left = Math.min(r.width - tt.offsetWidth, Math.max(0, e.clientX - r.left - tt.offsetWidth / 2)) + "px";
+  };
+  host.onmouseleave = () => tt.style.display = "none";
+}
+
+/* ---- rows ---- */
+const CLOSED = {take_profit: ["TAKE PROFIT", "g"], stop_loss: ["STOP LOSS", "r"], creator_sold: ["CREATOR SOLD", "r"], timeout: ["TIMED OUT", "a"], graduated: ["GRADUATED", "g"], end_of_data: ["CLOSED", ""]};
+const SKIPS = {bot_stopped: "BOT STOPPED", dev_buy: "DEV BUY", max_open: "MAX OPEN", mcap_too_high: "TOO LATE", mcap_too_high_at_fill: "TOO LATE", no_cash: "NO CASH"};
+function statusChip(r) {
+  switch (r.status) {
+    case "holding": return ["HOLDING", "g"];
+    case "exiting": return ["EXITING", "a"];
+    case "entering": return ["ENTERING", "a"];
+    case "closed": return CLOSED[r.detail] || ["CLOSED", ""];
+    case "skipped": return ["SKIPPED · " + (r.detail.startsWith("verdict:") ? r.detail.slice(8) : SKIPS[r.detail] || r.detail.toUpperCase()), ""];
+    case "watching": return ["WATCHING · " + r.detail, ""];
+    default: return ["SCANNING", ""];
+  }
+}
+function renderRows(rows, simulated) {
+  const host = $("rows"); host.replaceChildren();
+  $("empty").style.display = rows.length ? "none" : "flex";
+  for (const r of rows) {
+    const row = el("div", "trow");
+    const tok = el("div", "tok"); tok.append(el("b", "", r.symbol || "?"), el("small", "", r.mint.slice(0, 6) + "…" + r.mint.slice(-4)));
+    const [label, tone] = statusChip(r);
+    const pnl = el("span", "mono " + (r.pnl_sol == null ? "mut" : r.pnl_sol >= 0 ? "pos" : "neg"));
+    pnl.textContent = r.pnl_sol == null ? "—" : `${signed(r.pnl_sol, 4)} (${signed(r.pnl_pct, 1)}%)`;
+    const acts = el("div", "acts");
+    const copy = el("button", "sm", "copy"); copy.onclick = () => { try { navigator.clipboard.writeText(r.mint); toast("Mint copied"); } catch (e) {} }; acts.append(copy);
+    if (!simulated && MINT_RE.test(r.mint)) { const a = el("a", "sm", "view ↗"); a.href = "https://pump.fun/coin/" + r.mint; a.target = "_blank"; a.rel = "noopener noreferrer"; acts.append(a); }
+    row.append(tok, el("span", "mono mut", hhmmss(r.t)), el("span", "chip " + tone, label),
+      el("span", "mono", r.amount == null ? "—" : fmt(r.amount) + " SOL"), pnl,
+      el("span", "mono", r.liquidity_sol == null ? "—" : fmt(r.liquidity_sol, 2) + " SOL"), acts);
+    host.appendChild(row);
+  }
+}
+
+function renderLogs(logs) {
+  const host = $("logs"); host.replaceChildren();
+  for (const l of logs) {
+    const d = el("div", "logline " + l.kind); d.append(el("span", "t", hhmmss(l.t)), el("span", "k", l.kind.toUpperCase()), el("span", "x", l.text)); host.appendChild(d);
+  }
+  if (!logs.length) host.appendChild(el("div", "logline", "No log lines yet."));
+}
+
+function kv(host, pairs) { host.replaceChildren(); pairs.forEach(([k, v]) => host.append(el("span", "", k), el("span", "", v))); }
+
+function render(s) {
+  last = s;
+  const running = s.running;
+  $("state").textContent = running ? "RUNNING" : "STOPPED"; $("state").className = "state " + (running ? "on" : "off");
+  $("start").disabled = running; $("stop").disabled = !running; $("start2").disabled = running;
+  $("start2").lastChild.textContent = running ? "Bot running" : "Start Bot";
+  $("logcount").textContent = s.log_total > 999 ? "999+" : s.log_total;
+
+  const err = s.feed_status.startsWith("error");
+  $("modedot").className = "dot " + (err ? "bad" : s.feed_status === "live" ? "ok" : "warn");
+  const tag = s.simulated ? "DEMO" : s.source.startsWith("live") ? "LIVE" : "REPLAY";
+  $("modetext").textContent = ""; const b = el("b", "", tag); $("modetext").append(b, document.createTextNode(" · " + (s.simulated ? "SIMULATED DATA" : s.source.replace(/^(live|replay) ?/, "") || "PAPER") + (s.feed_status === "finished" ? " · FINISHED" : err ? " · ERROR" : "")));
+  $("simnote").hidden = !s.simulated;
+  $("emptytext").textContent = err ? s.feed_status : s.simulated ? "Waiting for tokens from the demo market" : s.source.startsWith("live") ? "Waiting for new tokens from Pump.fun to start trading" : "Waiting for the replay to begin";
+  $("walletline").textContent = `${fmt(s.paper.equity)} SOL · ${s.paper.open} open`;
+
+  if (!settingsLoaded) { fillSettings(s.settings); settingsLoaded = true; }
+  const st = s.stats;
+  $("s-trades").textContent = st.trades; $("s-wins").textContent = st.wins; $("s-rate").textContent = Math.round(st.win_rate) + "%";
+  const p = $("s-pnl"); p.textContent = signed(st.pnl_sol); p.className = "v " + (st.pnl_sol > 0 ? "pos" : st.pnl_sol < 0 ? "neg" : "");
+
+  renderRows(s.rows, s.simulated);
+  if (view === "logs") renderLogs(s.logs);
+  sparkline($("spark-small"), s.equity_curve, s.paper.start);
+  if (view === "profile") {
+    const ret = (s.paper.equity / s.paper.start - 1) * 100;
+    kv($("acct"), [["Starting bankroll", fmt(s.paper.start) + " SOL"], ["Equity", fmt(s.paper.equity) + " SOL"], ["Return", signed(ret, 2) + "%"], ["Free cash", fmt(s.paper.cash) + " SOL"], ["Open positions", s.paper.open], ["Launches seen", s.counters.launches], ["Scanned", s.counters.scanned]]);
+    sparkline($("spark-big"), s.equity_curve, s.paper.start);
+    const sk = Object.entries(s.counters.skipped).sort((a, b) => b[1] - a[1]);
+    kv($("skips"), sk.length ? sk.map(([k, v]) => [k.replace("verdict:", "verdict ").replaceAll("_", " "), v]) : [["Nothing skipped yet", ""]]);
+  }
+}
+
+let inflight = false;
+async function poll() {
+  if (inflight) return; inflight = true;
+  try {
+    const r = await fetch("/api/state?range=" + $("range").value, {cache: "no-store"});
+    render(await r.json());
+  } catch (e) { $("modedot").className = "dot bad"; $("modetext").textContent = "SERVER OFFLINE"; }
+  finally { inflight = false; }
+}
+document.querySelectorAll("#nav button").forEach(b => b.addEventListener("click", () => last && render(last)));
+if (/^#(dashboard|logs|profile)$/.test(location.hash)) show(location.hash.slice(1));
+poll(); setInterval(poll, 1000);
+</script>
+</body>
+</html>

@@ -1,18 +1,38 @@
 # Solana / pump.fun research toolkit
 
-Three read-only tools that build on each other. **None of them holds a wallet, a key, or sends a transaction.**
+Four read-only tools that build on each other. **None of them holds a wallet, a key, or sends a transaction.**
 Python 3.10+, standard library only (the live listener also needs `websockets`).
 
 ```
-python -m unittest discover -s tests -t .            # 96 tests, no network needed
+python -m unittest discover -s tests -t .            # 127 tests, no network needed
 python -m sniper.scanner <mint> [--json]             # 1. scan one token
 python -m sniper.listener --events launches.jsonl    # 2. record live launches + verdicts
 python -m sniper.paper replay launches.jsonl         # 3. paper-trade the recording
 python -m sniper.paper sweep  launches.jsonl         #    tune on half, validate on the other half
+python -m sniper.terminal                            # 4. dashboard in your browser (demo market)
 ```
+
+Windows: double-click `start_terminal.bat` (needs Python 3.10+ installed).
 
 Set `SOLANA_RPC_URL` to a private RPC (Helius, QuickNode, ...). The public endpoint rate-limits fast.
 Install the listener's one dependency with `pip install -r requirements-live.txt`.
+
+## The terminal (`sniper/terminal`)
+
+A browser dashboard (Dashboard / Logs / Profile) over the same paper engine. It serves on `127.0.0.1` only.
+
+```
+python -m sniper.terminal                        # SIMULATED demo market: for trying the UI, proves nothing
+python -m sniper.terminal --replay launches.jsonl --speed 20
+python -m sniper.terminal --live --rpc URL       # real launches, still paper trading (needs websockets)
+```
+
+- Start/Stop gates new entries (open positions are still managed). Amount range sizes PASS trades at the
+  top and CAUTION trades at the bottom. Settings apply live and are validated server-side.
+- There is **no wallet connection, key field or order-sending code**, and tests assert the page never asks for one.
+- The server refuses foreign `Host` headers and non-JSON POSTs, and the page renders chain data (token names)
+  with `textContent` only, since token names are attacker-controlled.
+- Demo data is synthetic; its P&L and scanner accuracy are invented.
 
 ## Suggested workflow
 

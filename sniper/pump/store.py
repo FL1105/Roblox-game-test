@@ -124,3 +124,9 @@ class LaunchStore:
 
     def close(self) -> None:
         self._db.close()
+
+    def __del__(self) -> None:
+        try:
+            self._db.close()
+        except Exception:  # interpreter shutdown or already closed
+            pass
