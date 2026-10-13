@@ -83,8 +83,14 @@ after graduation, or your own price impact. Real results will be worse than pape
 - Deployer history only knows creators the listener has *itself* recorded since you started, so it is weak
   at first and improves with time. A "rug" is defined as the creator selling at least half of what they bought
   *and* the price ending at least 50% below its peak inside the observation window (`pump/store.py`).
-- **Not verified against live services** (my sandbox blocks them): the PumpPortal message field names
-  (`pump/events.py`), the pump.fun / PumpSwap / Raydium program IDs (`scanner/scan.py`), the bonding-curve
-  constants and fee rate (`pump/curve.py`). Parsing is tolerant, so a mismatch shows up as "nothing recorded"
-  rather than wrong data, but check the first few lines of your JSONL.
+- **Checked against the live services (Oct 2026):** PumpPortal's `create` messages parse correctly (25 of 25
+  real ones) and the launch state is exactly 30 vSOL / 1.073B tokens; DexScreener lists fresh pump.fun tokens
+  before migration; Jupiter routes most of them, with a ~3% quoted round trip that matches the fee model.
+- **PumpPortal's trade stream is not free.** `subscribeTokenTrade` and `subscribeAccountTrade` only work with an
+  API key funded with at least 0.02 SOL; without one the server replies with an error and sends no trades.
+  The recorder needs trades, so it needs either that key or a different trade source (see below).
+- **Still unverified** (no reachable Solana RPC from my sandbox): the RPC-backed scanner checks, the pump.fun /
+  PumpSwap / Raydium program IDs in `scanner/scan.py`, the PumpPortal `buy`/`sell` message fields, the fee rate.
+- A Jupiter "no sell route" on a brand-new token can be indexing lag rather than a honeypot: one fresh token
+  showed a buy route but no sell route at any size. The scanner flags it, but treat it as unconfirmed.
 - Thresholds in `checks.Thresholds` and `paper.Strategy` are starting points, not tested truths.

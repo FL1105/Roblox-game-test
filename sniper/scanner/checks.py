@@ -173,7 +173,7 @@ def check_roundtrip(rt: RoundTrip, t: Thresholds) -> list[Finding]:
     if rt.tokens_out is None:
         return [Finding("roundtrip", S.INFO, f"No buy route found, so sell-ability is unverified ({rt.buy_error or 'no quote'})")]
     if rt.sol_back is None:
-        return [Finding("roundtrip", S.CRITICAL, f"A buy route exists but no sell route does ({rt.sell_error or 'no quote'}): likely honeypot")]
+        return [Finding("roundtrip", S.CRITICAL, f"A buy route exists but no sell route does ({rt.sell_error or 'no quote'}): possible honeypot, or Jupiter hasn't indexed a brand-new token yet; re-check after a minute")]
 
     loss = (1 - rt.sol_back / rt.in_lamports) * 100
     msg = f"Quoted round trip of {rt.in_lamports / 1e9:g} SOL loses {loss:.1f}% (fees, price impact, any sell tax)"
