@@ -53,9 +53,14 @@ def read_raw(path: str) -> list[dict]:
 
 def unpriceable(rows: list[dict]) -> set[str]:
     """Mints whose quotes do not follow the standard curve: mayhem-mode launches, tokens that failed the second-size
-    check, and (older recordings) tokens whose first three-quote snapshot disagreed with the launch k."""
+    check, (older recordings) tokens whose first three-quote snapshot disagreed with the launch k, and mints with more than one create row."""
     out = set()
+    seen_create: set[str] = set()
     for r in rows:
+        if r.get("k") == "create":
+            if r["mint"] in seen_create:
+                out.add(r["mint"])  # two launches under one name: the two lives would merge into one price path
+            seen_create.add(r["mint"])
         if r.get("k") == "create" and r.get("mayhem"):
             out.add(r["mint"])
         elif r.get("k") == "end" and r.get("reason") == "off_curve":

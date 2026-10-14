@@ -19,13 +19,23 @@ when a launch appears predict which launches are worth buying, by more than luck
 6. **Adapt slowly, in production, with the same honesty** (the Auto-tune screen does this: clones, paired comparison, partial moves).
 
 ## Layout
-- `data.py` recordings -> tokens; `Market.view(t)` is the only way to see other tokens, and only as of time t
-- `outcomes.py` what buying at the decision time returns under each exit policy (the engine's fees and delay; quiet tokens still cost fees)
+- `data.py` recordings -> tokens; `Market.view(t)` is the only way to see other tokens, and only as of time t; the data fingerprint covers every field
+- `outcomes.py` what buying at the decision time returns under each exit policy (the engine's fees and delay; a quiet token still costs fees; no hidden engine gates)
 - `context.py`, `features.py`, `registry.py`, `plugins/` feature sets; a plugin sees a `Context` and nothing else
-- `sandbox.py` plugins that read files, import the loaders or poke at internals are rejected before they run
-- `lab.py` walk-forward trials, the corrupted-future check, the verdict
-- `stats.py` block bootstrap interval, Reality Check; `ledger.py` the trial log; `models.py` the scorers
-- `confirm.py` freeze a spec, then test it once on the sealed recording
+- `sandbox.py` static rules for plugins: no files, no loaders, no state kept between calls (no mutable defaults, module containers or attribute writes),
+  one parameter, no answer keys (no long string constants, no big tables)
+- `worker.py` every feature set is built in a FRESH process in decision-time order and must pass behavioural checks: pure (same numbers again, reversed,
+  shuffled), unchanged when everything after the decision time is scrambled, unchanged (and the whole Context identical) when it is deleted
+- `lab.py` walk-forward trials, the family guard, the verdict; `stats.py` block bootstrap interval, scaled Reality Check; `ledger.py` the trial log
+- `versioning.py` one code hash over the harness, the engine and the data conversion: it is in every cache key, ledger entry and frozen spec
+- `confirm.py` freeze a spec (it must already be a counted development trial), then test it once on the sealed recording
+
+## The evaluation universe
+One pool of launches for every policy, defined only by things known at the decision time or by launch time: a token needs a quote on its curve, and launches in the
+last 12 minutes of each recording file are cut (their life was truncated by the recorder stopping). Nothing is dropped for what the token later did.
+Known limits, not hidden: tokens whose quotes were off the standard curve at the first look (~6%, the hottest launches, probably already graduated) cannot be
+priced and are excluded; a token that went quiet for 75 s is assumed flat afterwards (some would have moved again); the first price arrives ~13 s after launch, so
+nothing here says anything about faster entries; the simulator has no competing bots and always fills.
 
 ## Adding a feature set
 ```python
@@ -35,10 +45,12 @@ from research.registry import feature_set
 
 @feature_set("my_idea")
 def my_idea(c):                 # c is a research.context.Context
-    return {"something": ...}   # floats; the same keys for every token
+    return {"something": ...}   # floats; the same keys for every token; pure: no state
 ```
-Then `python -m research.run trial --features my_idea,launch --model lgbm_reg --q 0.1`. The first use runs the corrupted-future check.
+Then `python -m research.run trial --features my_idea,launch --model lgbm_reg --q 0.2`. The first use builds the matrix in a worker and runs all the checks.
 
 ## What counts as a finding
-A trial counts only if (a) at least 30 trades, (b) the block-bootstrap interval of mean return per trade is above zero, (c) the Reality
-Check over every trial ever run has p < 0.05, and (d) it then survives `research.confirm` on the sealed recording. Anything less is "no edge shown".
+A trial counts only if (a) at least 60 trades and a 99% block-bootstrap interval above zero, (b) it was run with a transaction cost of at least 0.001 SOL per side,
+(c) it is the very trial that drives the Reality Check, over every comparable trial in the ledger, and that has p < 0.05 after inflating for trials from older
+data or rules, and (d) it then passes `research.confirm` on the sealed recording: at least 100 trades and a one-sided p below 0.05 / 3.
+Changing the data starts a new family only by an acknowledged, logged reset (`RESEARCH_ACK_NEW_DATA`); old trials stay counted. Anything less is "no edge shown".

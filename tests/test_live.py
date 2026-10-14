@@ -333,6 +333,11 @@ class FeedReconnect(unittest.TestCase):
         _, slept, _, _ = self.run_feed([OSError("x")] * 8, minutes=30)
         self.assertEqual(max(slept[:8]), 30)
 
+    def test_a_mint_created_twice_is_unpriceable_rather_than_two_lives_merged(self):
+        rows = [create_row("DUP"), {"k": "obs", "t": 2, "mint": "DUP", "v_sol": 31.0, "v_tokens": K0 / 31.0}, create_row("DUP"), create_row("OK")]
+        self.assertEqual(unpriceable(rows), {"DUP"})
+        self.assertEqual(list(token_paths(rows)), ["OK"])
+
     def test_analysis_ignores_gap_and_resume_rows(self):
         rows = [create_row("OK"), {"k": "gap", "t": 5, "why": "x"}, {"k": "obs", "t": 6, "mint": "OK", "v_sol": 31.0, "v_tokens": K0 / 31.0}, {"k": "resume", "t": 9}]
         self.assertEqual(unpriceable(rows), set())

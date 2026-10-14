@@ -17,6 +17,7 @@ import sys
 from .lab import Lab
 from .models import MODELS
 from .outcomes import POLICIES
+from .paths import DEV_DATA
 from .registry import FEATURE_SETS
 
 
@@ -29,12 +30,12 @@ def fmt(e: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="research.run")
     p.add_argument("cmd", choices=["sets", "trial", "grid", "verdict"])
-    p.add_argument("--data", default="data/raw_main.jsonl")
+    p.add_argument("--data", default=",".join(DEV_DATA))
     p.add_argument("--features", default="")
     p.add_argument("--model", default="lgbm_reg")
     p.add_argument("--policy", default="tp30sl15")
     p.add_argument("--delay", type=float, default=0.0)
-    p.add_argument("--cost", type=float, default=0.0)
+    p.add_argument("--cost", type=float, default=0.001, help="SOL per transaction side; findings need at least 0.001")
     p.add_argument("--q", type=float, default=0.1)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--note", default="")
@@ -43,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--delays", default="0")
     p.add_argument("--qs", default="0.1")
     a = p.parse_args(argv)
-    lab = Lab([a.data])
+    lab = Lab(a.data.split(","))
     if a.cmd == "sets":
         for name in sorted(FEATURE_SETS):
             print(name)

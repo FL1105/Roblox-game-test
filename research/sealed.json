@@ -1,0 +1,7 @@
+{
+ "note": "sha256 of the first 64 KB of each sealed recording (data/raw_run2.jsonl, data/raw_run2b.jsonl)",
+ "heads": [
+  "dc249b3015c93171bddd4dfbed64420b514ecf7ff50b3b442b851277f6be442b",
+  "d110dcac9c5f4ef03cf8b4d649d474bb8b576449eb7d2b4d3302e6871acf698c"
+ ]
+}

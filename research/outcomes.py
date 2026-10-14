@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 from dataclasses import replace
 
@@ -13,6 +11,8 @@ from sniper.paper.engine import PaperEngine, Strategy
 from sniper.pump.events import NewToken, ScanNote, Trade
 
 from .data import Token
+from .paths import CACHE_DIR
+from .versioning import code_hash
 
 LATENCY_MS = 800   # decision-to-fill delay, as everywhere else in the project
 SIZE_SOL = 0.1
@@ -23,6 +23,7 @@ BASE = Strategy(
     latency_ms=LATENCY_MS, size_sol=SIZE_SOL, size_caution_sol=None, size_mode="fixed", auto_compound=False, max_open=10_000,
     require_scan=True, allowed_verdicts=frozenset({"PASS"}), max_dev_buy_pct=100.0, max_entry_mcap_sol=10_000.0, slippage_pct=50.0,
     exit_on_creator_sell=False, use_blacklist=False,
+    min_liquidity_sol=-1e9,   # the engine's default of 0 skips any token whose price is at or below its launch price: a hidden filter on the universe
 )
 
 POLICIES: dict[str, dict] = {
@@ -48,9 +49,10 @@ def decision_time(tok: Token, delay_s: float) -> int | None:
 
 
 def tradeable(tok: Token, delay_s: float) -> bool:
-    """A decision needs a quote at or before decision time, and a token still on its curve then (not graduated, not gone)."""
+    """A decision needs a quote at or before decision time, and a token still on its curve then (not graduated, not gone).
+    Launches in the tail of their recording (cut by launch time, for every policy alike) are outside the evaluation."""
     t0 = decision_time(tok, delay_s)
-    if t0 is None:
+    if t0 is None or tok.tail:
         return False
     seen = [o for o in tok.obs if o[0] <= t0]
     if not seen:
@@ -58,31 +60,17 @@ def tradeable(tok: Token, delay_s: float) -> bool:
     return seen[-1][2] > 280_000_000  # v_tokens above the graduation line
 
 
-def observed_until(tok: Token) -> float:
-    """Time up to which we know what the token did. A token that went idle stayed flat afterwards and one that graduated is over,
-    so for those every later moment is known; a token still being tracked is known only to its last observation."""
-    if tok.end_reason in ("idle", "graduated"):
-        return float("inf")
-    return float(max(tok.end_t or 0, tok.obs[-1][0] if tok.obs else 0))
-
-
-def resolvable(tok: Token, policy: str, delay_s: float) -> bool:
-    """The exit can be judged from what was recorded (otherwise the 'return' would depend on when observation happened to stop)."""
-    t0 = decision_time(tok, delay_s)
-    hold = POLICIES[policy].get("max_hold_s", MAX_EXIT_WINDOW_S)
-    return t0 is not None and observed_until(tok) >= t0 + LATENCY_MS + hold * 1000
-
-
 TICK_MS = 5_000
 
 
 def net_return(tok: Token, policy: str, delay_s: float, cost: float) -> float:
-    """Net return (%) of buying SIZE_SOL at the decision time and exiting by `policy`; NaN if we could not judge it.
+    """Net return (%) of buying SIZE_SOL at the decision time and exiting by `policy`; NaN only if we could not have decided (see `tradeable`).
 
     A token nobody touched after the quote still gets a fill (at the last quoted price) and an exit: quiet clock ticks stand in for
     the passing time, so 'no more trades' means a small loss to fees rather than 'no outcome' (dropping those would quietly
-    select the tokens that went on to trade)."""
-    if not tradeable(tok, delay_s) or not resolvable(tok, policy, delay_s):
+    select the tokens that went on to trade). A token whose recording ended before the exit rule would have fired is closed at its
+    last known price, as `PaperEngine.finish` does. A tradeable token that still produces no trade is a harness bug and raises."""
+    if not tradeable(tok, delay_s):
         return float("nan")
     t0 = decision_time(tok, delay_s)
     stream = [ev for ev in tok.events if not isinstance(ev, ScanNote)]  # the recorded scan's timing is not our decision time
@@ -94,30 +82,43 @@ def net_return(tok: Token, policy: str, delay_s: float, cost: float) -> float:
     for ev in stream:
         engine.on_event(ev)
     engine.finish()
-    return engine.closed[0].ret_pct if engine.closed else float("nan")
+    if not engine.closed:
+        raise RuntimeError(f"no trade for tradeable token {tok.mint}: engine skipped {dict(engine.skipped)}")
+    return engine.closed[0].ret_pct
 
 
 class OutcomeCache:
-    """Net returns for every token under a (policy, delay, cost) setting, computed once and kept on disk."""
+    """Net returns for every token under a (policy, delay, cost) setting, computed once and kept on disk (written atomically, keyed by every
+    piece of code and data that decides the number)."""
 
-    def __init__(self, tokens: list[Token], fingerprint: str, directory: str = "research/cache"):
-        self.tokens, self.fp, self.dir = tokens, fingerprint, directory
-        os.makedirs(directory, exist_ok=True)
+    def __init__(self, tokens: list[Token], fingerprint: str, directory: str = CACHE_DIR):
+        self.tokens, self.fp, self.dir = tokens, fingerprint, str(directory)
+        os.makedirs(self.dir, exist_ok=True)
         self._mem: dict[tuple, np.ndarray] = {}
 
     def _path(self, key: tuple) -> str:
-        with open(__file__, "rb") as f:
-            code = hashlib.sha256(f.read()).hexdigest()[:8]  # a change to the rules invalidates old results
-        return os.path.join(self.dir, f"{self.fp}_{code}_{'_'.join(str(k) for k in key)}.npy")
+        return os.path.join(self.dir, f"out_{self.fp}_{code_hash()}_{'_'.join(str(k) for k in key)}.npy")
 
     def returns(self, policy: str, delay_s: float, cost: float) -> np.ndarray:
         key = (policy, float(delay_s), float(cost))
         if key not in self._mem:
             path = self._path(key)
+            arr = None
             if os.path.exists(path):
-                self._mem[key] = np.load(path)
-            else:
+                try:
+                    arr = np.load(path)
+                    if len(arr) != len(self.tokens):
+                        arr = None
+                except (OSError, ValueError, EOFError):
+                    arr = None
+            if arr is None:
                 arr = np.array([net_return(t, policy, delay_s, cost) for t in self.tokens], dtype=float)
-                np.save(path, arr)
-                self._mem[key] = arr
+                atomic_save_npy(path, arr)
+            self._mem[key] = arr
         return self._mem[key]
+
+
+def atomic_save_npy(path: str, arr: np.ndarray) -> None:
+    tmp = f"{path}.{os.getpid()}.tmp.npy"
+    np.save(tmp, arr)
+    os.replace(tmp, path)
