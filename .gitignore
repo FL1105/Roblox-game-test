@@ -5,3 +5,4 @@ __pycache__/
 *.keypair.json
 *.jsonl
 *.db
+data/*.log
