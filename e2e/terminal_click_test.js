@@ -1,16 +1,18 @@
 // End-to-end click test for the terminal's configuration screen.
 // Run:   python -m sniper.terminal --no-browser --port 8765 &      (demo feed is fine)
 //        npm install playwright-core   &&   node e2e/terminal_click_test.js
-// Env:   TERMINAL_URL (default http://127.0.0.1:8765), CHROME_PATH (a Chromium/Chrome binary; optional)
+// Env:   TERMINAL_URL (default http://127.0.0.1:8765; or file:///path/to/dist/launch-sniper.html for the no-install build),
+//        CHROME_PATH (a Chromium/Chrome binary; optional)
 // It saves presets/fields through the real UI and reads the settings back from the API, so it CHANGES the
 // running terminal's settings and resets its paper bankroll to 5 SOL. Use a throwaway instance.
 const { chromium } = require("playwright-core");
 const URL = process.env.TERMINAL_URL || "http://127.0.0.1:8765";
-const state = async () => (await fetch(URL + "/api/state")).json();
+let page;
+const state = async () => URL.startsWith("file:") ? page.evaluate(() => window.__sniperLocal.state.snapshot("24h")) : (await fetch(URL + "/api/state")).json();
 const check = (name, ok, extra = "") => { console.log((ok ? "PASS " : "FAIL ") + name + (extra ? "  " + extra : "")); if (!ok) process.exitCode = 1; };
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, args: ["--no-sandbox"] });
-  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   const errors = []; page.on("pageerror", e => errors.push(String(e))); page.on("console", m => { if (m.type() === "error" && !/status of 400/.test(m.text())) errors.push(m.text()); }); // the 400s are the deliberate invalid-input checks
   await page.goto(URL); await page.waitForSelector(".trow:not(.thead)", { timeout: 15000 });
 
@@ -74,7 +76,7 @@ const check = (name, ok, extra = "") => { console.log((ok ? "PASS " : "FAIL ") +
   await page.click("#stop"); await page.waitForTimeout(500);
   check("stop button stops it", (await state()).running === false);
   await page.click("#nav button[data-view=profile]"); await page.fill("#bankroll", "5");
-  page.once("dialog", d => d.accept()); await page.click("#reset"); await page.waitForTimeout(800);
+  await page.click("#reset"); await page.click("#reset"); await page.waitForTimeout(800);
   const st = await state();
   check("bankroll reset to 5 SOL", st.paper.start === 5 && st.paper.equity === 5, JSON.stringify(st.paper));
   check("no page errors", errors.length === 0, errors.join(" | ").slice(0, 300));

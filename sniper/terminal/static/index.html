@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en" data-theme="emerald">
+<html lang="en" data-accent="emerald">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Launch Sniper · Paper Terminal</title>
+<title>Launch Sniper Paper Terminal</title>
 <link rel="icon" href="data:,">
 <style>
 :root{
@@ -11,15 +11,16 @@
   --text:#e6efee; --muted:#7a8d95; --dim:#566770;
   --red:#ff5b6b; --amber:#f5b84a; --good:#2ee37f;
   --accent:#2ee37f; --accent-ink:#04140b;
+  color-scheme:dark;
   --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
   --sans:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
 }
-:root[data-theme="cyan"]{--accent:#38cfff;--accent-ink:#031620;--good:#38cfff}
-:root[data-theme="amber"]{--accent:#f5b84a;--accent-ink:#1b1203;--good:#f5b84a}
+:root[data-accent="cyan"]{--accent:#38cfff;--accent-ink:#031620;--good:#38cfff}
+:root[data-accent="amber"]{--accent:#f5b84a;--accent-ink:#1b1203;--good:#f5b84a}
 *{box-sizing:border-box}
 html,body{margin:0}
 body{background:radial-gradient(1100px 500px at 10% -10%,color-mix(in srgb,var(--accent) 9%,transparent),transparent 60%),radial-gradient(900px 500px at 100% 0,color-mix(in srgb,var(--accent) 5%,transparent),transparent 55%),var(--bg);
-  color:var(--text);font:14px/1.4 var(--sans);min-height:100vh}
+  color:var(--text);font:14px/1.4 var(--sans);}
 button,input,select{font:inherit;color:inherit}
 .app{max-width:1520px;margin:0 auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:14px}
 
@@ -120,7 +121,7 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
 .kv{display:grid;grid-template-columns:1fr auto;gap:8px 16px;font-size:13px}.kv span:nth-child(odd){color:var(--muted)}.kv span:nth-child(even){font-family:var(--mono);text-align:right}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:12px;background:#1a0f12;border:1px solid color-mix(in srgb,var(--red) 55%,transparent);color:#ff9aa5;font:12.5px var(--mono);display:none;z-index:9}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media (max-width:920px){.layout{grid-template-columns:1fr}.spacer{display:none}.top{gap:12px}}
+@media (max-width:920px){.layout{grid-template-columns:minmax(0,1fr)}.spacer{display:none}.top{gap:12px}}
 
 /* configuration modal */
 .overlay{position:fixed;inset:0;background:rgba(3,7,10,.72);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:4vh 16px;z-index:20;overflow:auto}
@@ -165,6 +166,7 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
 .toast.ok{background:#0d1a14;border-color:color-mix(in srgb,var(--good) 55%,transparent);color:var(--good)}
 .toast{z-index:40}
 @media (max-width:700px){.fgrid{grid-template-columns:1fr}}
+@media (max-width:520px){.top{padding:12px}.nav{width:100%}.nav button{flex:1;justify-content:center;padding:8px 6px;gap:6px;min-width:0}.pill{width:100%;justify-content:center}.icons{width:100%;justify-content:space-between}.brand h1{font-size:16px}.mhead,.mbody,.mfoot{padding-inline:14px}.tile .v{font-size:17px}}
 </style>
 </head>
 <body>
@@ -281,6 +283,7 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
 </div>
 <div class="toast" id="toast" role="alert"></div>
 
+<!--standalone-shim-->
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -316,17 +319,20 @@ $("b-home").onclick = () => show("dashboard");
 $("b-refresh").onclick = () => poll();
 $("b-full").onclick = () => { try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); } catch (e) {} };
 const THEMES = ["emerald", "cyan", "amber"];
-function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (e) {} }
-try { const t = localStorage.getItem("theme"); if (THEMES.includes(t)) setTheme(t); } catch (e) {}
-$("b-theme").onclick = () => setTheme(THEMES[(THEMES.indexOf(document.documentElement.dataset.theme) + 1) % THEMES.length]);
+function setTheme(t) { document.documentElement.dataset.accent = t; try { localStorage.setItem("accent", t); } catch (e) {} }  // data-accent, not data-theme: a host page may own data-theme
+try { const t = localStorage.getItem("accent"); if (THEMES.includes(t)) setTheme(t); } catch (e) {}
+$("b-theme").onclick = () => setTheme(THEMES[(THEMES.indexOf(document.documentElement.dataset.accent) + 1) % THEMES.length]);
 
 /* ---- bot control & settings ---- */
 async function setRunning(r) { try { await api("/api/bot", {running: r}); poll(); } catch (e) { toast(e.message); } }
 $("start").onclick = $("start2").onclick = () => setRunning(true);
 $("stop").onclick = () => setRunning(false);
-$("reset").onclick = async () => {
+let resetArmed = false, resetTimer;
+function disarmReset() { resetArmed = false; $("reset").textContent = "Reset paper account"; }
+$("reset").onclick = async () => {  // two-step confirm built into the page (browser pop-ups are unavailable in some viewers)
+  if (!resetArmed) { resetArmed = true; $("reset").textContent = "Click again to wipe the account, table and logs"; clearTimeout(resetTimer); resetTimer = setTimeout(disarmReset, 4000); return; }
+  disarmReset();
   const start = Number($("bankroll").value);
-  if (!confirm("Reset the paper account, token table and logs?")) return;
   try { await api("/api/reset", {start_sol: start}); bankrollLoaded = false; poll(); } catch (e) { toast(e.message); }
 };
 $("range").onchange = () => poll();

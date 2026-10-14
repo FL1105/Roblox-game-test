@@ -1,10 +1,18 @@
 # Solana / pump.fun research toolkit
 
+## Easiest way to try it (no install, no Python)
+
+Open **`dist/launch-sniper.html`** in any browser (download that one file from GitHub, then double-click it).
+It runs the whole paper-trading terminal by itself on a **simulated** market. It has no server, makes no network
+requests and never asks for a wallet or key. It is the same engine as the Python version, rewritten in
+JavaScript and checked against it by `tests/test_js_parity.py`. After editing `sniper/terminal/static/`, rebuild
+it with `python tools/build_standalone.py` (a test fails if the committed file is stale).
+
 Four read-only tools that build on each other. **None of them holds a wallet, a key, or sends a transaction.**
 Python 3.10+, standard library only (the live listener also needs `websockets`).
 
 ```
-python -m unittest discover -s tests -t .            # 156 tests, no network needed
+python -m unittest discover -s tests -t .            # 162 tests, no network needed
 python -m sniper.scanner <mint> [--json]             # 1. scan one token
 python -m sniper.listener --events launches.jsonl    # 2. record live launches + verdicts
 python -m sniper.paper replay launches.jsonl         # 3. paper-trade the recording
