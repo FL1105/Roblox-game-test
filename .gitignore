@@ -7,3 +7,5 @@ __pycache__/
 *.db
 data/*.log
 data/*.pid
+research/cache/
+research/ledger/vectors/
