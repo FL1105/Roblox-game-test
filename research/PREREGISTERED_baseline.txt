@@ -1,0 +1,6 @@
+Pre-registered baseline search (written before running; every trial is counted in research/ledger/trials.jsonl):
+Question: does ANY information visible at the decision time (price path at the first quote, launch facts, scanner check, market mood, creator history) select launches that
+return more than the 0.001 SOL/side transaction cost plus fees?
+Feature sets: all five built-ins together; tape only; launch+creator+market.  Models: ridge, lgbm_reg.  Delays: 0 s and 30 s after the first quote.
+Policies: tp15sl10 and hold60.  Selection: top 10% and top 25% of each time block by predicted return.  Cost 0.001.  Seed 0.
+That is 3 x 2 x 2 x 2 x 2 = 48 trials. Nothing else is tried before the verdict is read.
