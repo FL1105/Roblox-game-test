@@ -85,3 +85,22 @@ def compare(events: list[Event], model: HoldModel | None = None, tx_cost_sol: fl
     for name, s in strategies.items():
         lines.append(fmt_row(run(events, s, mp, name)))
     return "\n".join(lines)
+
+
+def ablations(base: Strategy) -> dict[str, Strategy]:
+    """The smart exit with each rule removed in turn. A rule that never changes the result is dead weight."""
+    from ..policy.smart import SmartParams
+
+    full = SmartParams(tp_floor=base.take_profit_pct, tp_cap=max(150.0, 4 * base.take_profit_pct))
+    out = {"smart exit, all rules": replace(base, exit_mode="smart", smart=full)}
+    for flag, label in (("use_momentum_tp", "momentum take-profit"), ("use_trail", "volatility trail"), ("use_stall", "stalled-winner exit"), ("use_flow", "sell-pressure exit")):
+        out[f"  without {label}"] = replace(base, exit_mode="smart", smart=replace(full, **{flag: False}))
+    out["  none of the four (stop loss + cap only)"] = replace(base, exit_mode="smart", smart=replace(full, use_momentum_tp=False, use_trail=False, use_stall=False, use_flow=False))
+    return out
+
+
+def ablation_table(events: list[Event], tx_cost_sol: float = 0.0, latency_ms: int = 800) -> str:
+    lines = [f"{'smart-exit variant':38} {'trades':>5} {'win':>6} {'mean ret':>8}  {'95% CI of mean':>14}  {'P&L SOL':>8}"]
+    for name, s in ablations(base_strategy(tx_cost_sol, latency_ms)).items():
+        lines.append(fmt_row(run(events, s, None, name)))
+    return "\n".join(lines)

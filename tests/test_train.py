@@ -113,3 +113,44 @@ class CompareAndAnalyze(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Report(unittest.TestCase):
+    def raw_file(self):
+        import json
+        import tempfile
+        rows = []
+        for p in synthetic_paths(60).values():
+            c = p["create"]
+            rows.append({"k": "create", "t": c["t"], "mint": c["mint"], "creator": "C", "symbol": "S", "name": "N", "dev_tokens": 0.0, "dev_sol": 0.0, "v_sol": c["v_sol"], "v_tokens": c["v_tokens"]})
+            for j, o in enumerate(p["obs"]):
+                rows.append({"k": "obs", "t": o["t"], "mint": c["mint"], "v_sol": o["v_sol"], "v_tokens": o["v_tokens"]})
+                if j == 0:
+                    rows.append({"k": "chk", "t": o["t"] + 100, "mint": c["mint"], "rt_in_sol": 0.1, "rt_back_sol": 0.0969})
+            rows.append({"k": "end", "t": p["end"]["t"], "mint": c["mint"], "reason": "idle"})
+        f = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
+        f.write("\n".join(json.dumps(r) for r in rows) + "\n")
+        f.close()
+        return f.name
+
+    def test_full_report_has_every_section_and_uses_only_held_out_launches_for_the_verdict(self):
+        from sniper.paper.compare import ablations
+        from sniper.report import build
+        text = build([self.raw_file()])
+        for heading in ("What happens to a blindly sniped launch", "Learned hold/sell model", "UNSEEN launches", "Which smart-exit rules matter", "How to read this"):
+            self.assertIn(heading, text)
+        self.assertEqual(text.count("### transaction cost"), 3)
+        self.assertIn("test AUC", text)
+        self.assertIn("learned model", text)
+        self.assertEqual(len(ablations(base_strategy())), 6)
+
+    def test_report_degrades_gracefully_when_there_is_too_little_data_for_a_model(self):
+        import json
+        import tempfile
+        from sniper.report import build
+        f = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
+        for p in list(synthetic_paths(6).values()):
+            c = p["create"]
+            f.write(json.dumps({"k": "create", "t": c["t"], "mint": c["mint"], "creator": "C", "symbol": "S", "name": "N", "dev_tokens": 0.0, "dev_sol": 0.0, "v_sol": c["v_sol"], "v_tokens": c["v_tokens"]}) + "\n")
+        f.close()
+        self.assertIn("not enough launches", build([f.name]))
