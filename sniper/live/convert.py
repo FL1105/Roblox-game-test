@@ -87,9 +87,12 @@ def to_events(rows: list[dict], fee: float = FEE) -> list[Event]:
                     side, sol = "sell", (vs0 - vs) * (1 - fee)
                 events.append(Trade(r["t"], mint, UNKNOWN_TRADER, side, abs(sol), abs(vt0 - vt), vs, vt))
                 last[mint] = (vs, vt)
-            if "rt_back_sol" in r:
+            if "rt_back_sol" in r:  # older recordings kept the sell check on the first observation
                 v, score, summary = verdict_from_roundtrip(launches[mint].dev_tokens, r.get("rt_in_sol"), r.get("rt_back_sol"))
                 events.append(ScanNote(r["t"], mint, v, score, summary))
+        elif k == "chk" and mint in launches:
+            v, score, summary = verdict_from_roundtrip(launches[mint].dev_tokens, r.get("rt_in_sol"), r.get("rt_back_sol"))
+            events.append(ScanNote(r["t"], mint, v, score, summary))
     return sorted(events, key=lambda e: e.t)  # stable: a trade and its scan keep recording order
 
 

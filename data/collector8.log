@@ -1,0 +1,1 @@
+01:29:08 tracking 0 | {'created': 0, 'routable': 0, 'never_routable': 0, 'ended': 0, 'off_curve': 0, 'mayhem_skipped': 0, 'skipped_capacity': 0} | jupiter {'requests': 0, 'ok': 0, 'no_route': 0, 'throttled': 0, 'errors': 0} @ 12.0 rps | check n/a

@@ -39,6 +39,93 @@ function makeRng(seed) {
   };
 }
 
+/* ---------------- decision features, smart rules, learned model (ports of sniper/policy/) ---------------- */
+const FEATURES = ["age_s", "liq_sol", "log_ret_launch", "mom_5", "mom_15", "mom_45", "flow_15", "flow_60", "trades_15", "trades_60",
+  "idle_s", "up_frac_30", "dd_peak", "since_peak_s", "progress", "vol_30", "dev_pct"];
+const GRADUATION_SOL = 85;
+
+class TokenTape {
+  constructor(launch_t, dev_pct, launch_price) {
+    this.launch_t = launch_t; this.dev_pct = dev_pct || 0; this.launch_price = launch_price || VIRTUAL_START_SOL / 1073000000;
+    this.ts = []; this.vs = []; this.vt = []; this.peak_price = 0; this.peak_t = 0;
+  }
+  add(t, v_sol, v_tokens) {
+    const n = this.vt.length;
+    if (n && this.vt[n - 1] === v_tokens && this.vs[n - 1] === v_sol) return;
+    this.ts.push(t); this.vs.push(v_sol); this.vt.push(v_tokens);
+    const price = v_sol / v_tokens;
+    if (price >= this.peak_price) { this.peak_price = price; this.peak_t = t; }
+  }
+  price(i) { return this.vs[i] / this.vt[i]; }
+  indexAt(t) { let lo = 0, hi = this.ts.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (this.ts[mid] <= t) lo = mid + 1; else hi = mid; } return lo - 1; }
+  priceAt(t) { const i = this.indexAt(t); return i < 0 ? this.launch_price : this.price(i); }
+  vsolAt(t) { const i = this.indexAt(t); return i < 0 ? VIRTUAL_START_SOL : this.vs[i]; }
+}
+function tapeFromLaunch(launch) {
+  const tape = new TokenTape(launch.t, launch.dev_tokens / TOTAL_SUPPLY * 100, launch.v_sol / launch.v_tokens);
+  tape.add(launch.t, launch.v_sol, launch.v_tokens);
+  return tape;
+}
+function pathFeatures(tape, now) {
+  const last = tape.ts.length - 1;
+  if (now === undefined || now === null) now = tape.ts[last];
+  const price = tape.price(last), vsol = tape.vs[last];
+  const mom = (w) => Math.log(price / tape.priceAt(now - Math.trunc(w * 1000)));
+  const flow = (w) => vsol - tape.vsolAt(now - Math.trunc(w * 1000));
+  const trades = (w) => { let n = 0; for (const t of tape.ts) if (t > now - Math.trunc(w * 1000) && t > tape.launch_t) n++; return n; };
+  const recent = []; for (let i = Math.max(0, last - 40); i <= last; i++) if (tape.ts[i] > now - 30000 && i > 0) recent.push(i);
+  let ups = 0, downs = 0; const rets = [];
+  for (const i of recent) { if (tape.price(i) > tape.price(i - 1)) ups++; if (tape.price(i) < tape.price(i - 1)) downs++; rets.push(Math.log(tape.price(i) / tape.price(i - 1))); }
+  let vol = 0;
+  if (rets.length >= 2) { const mean = rets.reduce((a, b) => a + b, 0) / rets.length; vol = Math.sqrt(rets.reduce((a, r) => a + (r - mean) * (r - mean), 0) / (rets.length - 1)); }
+  return {
+    age_s: (now - tape.launch_t) / 1000, liq_sol: vsol - VIRTUAL_START_SOL, log_ret_launch: Math.log(price / tape.launch_price),
+    mom_5: mom(5), mom_15: mom(15), mom_45: mom(45), flow_15: flow(15), flow_60: flow(60), trades_15: trades(15), trades_60: trades(60),
+    idle_s: (now - tape.ts[last]) / 1000, up_frac_30: ups + downs ? ups / (ups + downs) : 0.5, dd_peak: Math.log(price / tape.peak_price),
+    since_peak_s: (now - tape.peak_t) / 1000, progress: Math.min(Math.max((vsol - VIRTUAL_START_SOL) / GRADUATION_SOL, 0), 1), vol_30: vol, dev_pct: tape.dev_pct,
+  };
+}
+
+const SMART_DEFAULTS = { tp_floor: 30, tp_cap: 150, arm_ret: 15, trail_k: 3, trail_min: 0.05, trail_max: 0.25, stall_idle_s: 30, flow_exit: 0.04, use_stall: true, use_flow: true, use_trail: true, use_momentum_tp: true };
+function smartDecide(p, ret, peakRet, f) {
+  if (ret >= p.tp_cap) return "take_profit";
+  if (p.use_momentum_tp && ret >= p.tp_floor && f.mom_5 <= 0) return "profit_stall";
+  if (p.use_trail && peakRet >= p.arm_ret) {
+    const width = Math.min(Math.max(p.trail_k * f.vol_30, p.trail_min), p.trail_max);
+    if (1 + ret / 100 <= (1 + peakRet / 100) * (1 - width)) return "smart_trail";
+  }
+  if (p.use_stall && ret > 0 && f.idle_s >= p.stall_idle_s) return "stalled";
+  if (p.use_flow && ret > 0 && f.flow_15 < -p.flow_exit * Math.max(f.liq_sol + 30.0, 1.0)) return "sell_pressure";
+  return null;
+}
+
+const LOG1P = new Set(["age_s", "liq_sol", "trades_15", "trades_60", "idle_s", "since_peak_s", "dev_pct"]), SIGNED_LOG1P = new Set(["flow_15", "flow_60"]);
+function transformFeatures(f) {
+  return FEATURES.map((name) => {
+    let x = f[name];
+    if (LOG1P.has(name)) x = Math.log1p(Math.max(x, 0));
+    else if (SIGNED_LOG1P.has(name)) x = Math.log1p(Math.abs(x)) * (x < 0 ? -1 : 1);
+    return x;
+  });
+}
+function logisticProba(m, x) {
+  let z = m.intercept;
+  for (let i = 0; i < x.length; i++) z += m.coef[i] * (x[i] - m.mean[i]) / m.std[i];
+  return 1 / (1 + Math.exp(-Math.max(Math.min(z, 35), -35)));
+}
+class ModelExit {
+  constructor(modelJson, params) {
+    if (JSON.stringify(modelJson.features) !== JSON.stringify(FEATURES)) throw new Error("model was trained on a different feature list; retrain it");
+    this.up = modelJson.up; this.down = modelJson.down; this.params = Object.assign({ sell_margin: 0.10, min_age_s: 5.0 }, params || {});
+  }
+  scores(f) { const x = transformFeatures(f); return [logisticProba(this.up, x), logisticProba(this.down, x)]; }
+  decide(ret, peakRet, f) {
+    if (f.age_s < this.params.min_age_s) return null;
+    const x = transformFeatures(f);
+    return logisticProba(this.down, x) - logisticProba(this.up, x) >= this.params.sell_margin ? "model_sell" : null;
+  }
+}
+
 /* ---------------- paper engine (port of sniper/paper/engine.py) ---------------- */
 function defaultStrategyFields() {
   return {
@@ -46,13 +133,16 @@ function defaultStrategyFields() {
     max_open: 3, latency_ms: 800, fee_bps: 123.8, tx_cost_sol: 0.003, exit_on_creator_sell: true, require_scan: true,
     allowed_verdicts: ["PASS", "CAUTION"], max_dev_buy_pct: 15, max_entry_mcap_sol: 60, slippage_pct: 10,
     trailing_stop_pct: 0, min_liquidity_sol: 0, size_mode: "verdict", auto_compound: false, use_blacklist: true, blacklist: [],
+    exit_mode: "targets", smart: null, entry_mode: "snipe", confirm_gain_pct: 10, confirm_min_flow_sol: 0, confirm_window_s: 60,
   };
 }
 const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 class PaperEngine {
-  constructor(strategy, startSol, onNote) {
+  constructor(strategy, startSol, onNote, modelPolicy) {
     this.s = strategy;
+    this.model_policy = modelPolicy || null;
+    this.tapes = new Map(); this.watch = new Map();
     this.enabled = true;
     this.onNote = onNote || null;
     this.start_sol = startSol === undefined ? 1 : startSol;
@@ -72,9 +162,12 @@ class PaperEngine {
   onEvent(ev) {
     this.last_t = Math.max(this.last_t, ev.t);
     this._requestTimeouts(ev.t);
+    this._expireWatches(ev.t);
+    this._reviewPositions(ev.t);
     this._fillDue(ev.t);
     if (ev.type === "new_token") {
       this.launch.set(ev.mint, ev);
+      this.tapes.set(ev.mint, tapeFromLaunch(ev));
       this.curve.set(ev.mint, { v_sol: ev.v_sol, v_tokens: ev.v_tokens });
       if (!this.s.require_scan) this._considerEntry(ev.mint, ev.t);
     } else if (ev.type === "scan") {
@@ -90,12 +183,36 @@ class PaperEngine {
     for (const pos of [...this.positions.values()]) this._close(pos, this.last_t, pos.exit_reason || "end_of_data");
     if (this.s.require_scan) { let n = 0; for (const m of this.launch.keys()) if (!this.scans.has(m)) n++; this.skipped.no_scan = (this.skipped.no_scan || 0) + n; }
     this.skipped.entry_never_filled = (this.skipped.entry_never_filled || 0) + this.pending.size;
+    this.skipped.no_confirmation = (this.skipped.no_confirmation || 0) + this.watch.size;
     return { closed: this.closed, skipped: this.skipped, final_equity: this.cash, equity_curve: this.equity_curve };
   }
 
   _considerEntry(mint, decisionT) {
+    if (this.pending.has(mint) || this.positions.has(mint) || this.watch.has(mint)) return;
+    if (this.s.entry_mode === "confirm" && this.enabled) {
+      this.watch.set(mint, decisionT + Math.trunc(this.s.confirm_window_s * 1000));
+      this._checkWatch(mint, decisionT);
+      return;
+    }
+    this._tryEntry(mint, decisionT);
+  }
+
+  _checkWatch(mint, now) {
+    const deadline = this.watch.get(mint);
+    if (deadline === undefined) return;
+    if (now > deadline) { this.watch.delete(mint); this._skip(now, mint, "no_confirmation"); return; }
+    const tape = this.tapes.get(mint);
+    if (!tape) return;
+    const f = pathFeatures(tape, now);
+    if ((Math.exp(f.log_ret_launch) - 1) * 100 >= this.s.confirm_gain_pct && f.flow_15 >= this.s.confirm_min_flow_sol) { this.watch.delete(mint); this._tryEntry(mint, now); }
+  }
+
+  _expireWatches(now) {
+    for (const [mint, d] of [...this.watch]) if (now > d) this._checkWatch(mint, now);
+  }
+
+  _tryEntry(mint, decisionT) {
     const launch = this.launch.get(mint), state = this.curve.get(mint), s = this.s;
-    if (this.pending.has(mint) || this.positions.has(mint)) return;
     if (!this.enabled) this._skip(decisionT, mint, "bot_stopped");
     else if (s.use_blacklist && (s.blacklist.includes(launch.creator) || this.known_ruggers.has(launch.creator))) this._skip(decisionT, mint, "blacklisted");
     else if (launch.dev_tokens / TOTAL_SUPPLY * 100 > s.max_dev_buy_pct) this._skip(decisionT, mint, "dev_buy");
@@ -137,6 +254,9 @@ class PaperEngine {
   _onTrade(tr) {
     const state = { v_sol: tr.v_sol, v_tokens: tr.v_tokens }, s = this.s;
     this.curve.set(tr.mint, state);
+    const tape = this.tapes.get(tr.mint);
+    if (tape) tape.add(tr.t, tr.v_sol, tr.v_tokens);
+    if (this.watch.has(tr.mint)) this._checkWatch(tr.mint, tr.t);
     const launch = this.launch.get(tr.mint);
     if (launch && tr.trader === launch.creator && tr.side === "sell" && launch.dev_tokens > 0) {
       const sold = (this.creator_sold.get(tr.mint) || 0) + tr.tokens;
@@ -148,15 +268,38 @@ class PaperEngine {
     let reason = null;
     if (s.exit_on_creator_sell && tr.trader === pos.creator && tr.side === "sell") reason = "creator_sold";
     else if (isGraduated(state)) reason = "graduated";
-    else {
-      const net = quoteSell(state, pos.tokens, s.fee_bps) - 2 * s.tx_cost_sol;
-      pos.peak_net = Math.max(pos.peak_net, net);
-      const ret = (net / pos.sol_in - 1) * 100;
-      if (ret >= s.take_profit_pct) reason = "take_profit";
-      else if (s.trailing_stop_pct > 0 && pos.peak_net > pos.sol_in && net <= pos.peak_net * (1 - s.trailing_stop_pct / 100)) reason = "trailing_stop";
-      else if (ret <= -s.stop_loss_pct) reason = "stop_loss";
-    }
+    else reason = this._exitReason(pos, state, tr.t);
     if (reason) { pos.exit_reason = reason; pos.exit_ready_ms = tr.t + s.latency_ms; }
+  }
+
+  _exitReason(pos, state, now) {
+    const s = this.s;
+    const net = quoteSell(state, pos.tokens, s.fee_bps) - 2 * s.tx_cost_sol;
+    pos.peak_net = Math.max(pos.peak_net, net);
+    const ret = (net / pos.sol_in - 1) * 100;
+    if (s.exit_mode === "targets") {
+      if (ret >= s.take_profit_pct) return "take_profit";
+      if (s.trailing_stop_pct > 0 && pos.peak_net > pos.sol_in && net <= pos.peak_net * (1 - s.trailing_stop_pct / 100)) return "trailing_stop";
+      if (ret <= -s.stop_loss_pct) return "stop_loss";
+      return null;
+    }
+    if (ret <= -s.stop_loss_pct) return "stop_loss";
+    const tape = this.tapes.get(pos.mint);
+    if (!tape) return null;
+    const feats = pathFeatures(tape, now), peakRet = (pos.peak_net / pos.sol_in - 1) * 100;
+    if (s.exit_mode === "model" && this.model_policy) return this.model_policy.decide(ret, peakRet, feats);
+    const params = s.smart || Object.assign({}, SMART_DEFAULTS, { tp_floor: s.take_profit_pct, tp_cap: Math.max(150.0, 4 * s.take_profit_pct) });
+    return smartDecide(params, ret, peakRet, feats);
+  }
+
+  _reviewPositions(now) {
+    if (this.s.exit_mode === "targets") return;
+    for (const pos of this.positions.values()) {
+      if (pos.exit_ready_ms === null) {
+        const reason = this._exitReason(pos, this.curve.get(pos.mint), now);
+        if (reason) { pos.exit_reason = reason; pos.exit_ready_ms = now + this.s.latency_ms; }
+      }
+    }
   }
 
   _requestTimeouts(now) {
@@ -207,6 +350,7 @@ function settingsDict(s) {
     size_mode: s.size_mode, auto_compound: s.auto_compound, use_blacklist: s.use_blacklist, blacklist: [...s.blacklist].sort(),
     honeypot_detection: s.require_scan, exit_on_creator_sell: s.exit_on_creator_sell, latency_ms: s.latency_ms, max_hold_s: s.max_hold_s,
     verdicts: [...s.allowed_verdicts].sort(), fee_bps: s.fee_bps, tx_cost_sol: s.tx_cost_sol,
+    exit_mode: s.exit_mode, entry_mode: s.entry_mode, confirm_gain_pct: s.confirm_gain_pct, confirm_min_flow_sol: s.confirm_min_flow_sol, confirm_window_s: s.confirm_window_s,
   };
 }
 
@@ -218,7 +362,7 @@ function num(data, key, label, lo, hi, current) {
   return v;
 }
 
-function parseSettings(data, current) {
+function parseSettings(data, current, hasModel) {
   const cur = settingsDict(current);
   const unknown = Object.keys(data).filter((k) => !has(cur, k)).sort();
   if (unknown.length) throw new Error(`unknown setting: ${unknown[0]}`);
@@ -235,6 +379,11 @@ function parseSettings(data, current) {
   }
   const mode = has(data, "size_mode") ? data.size_mode : cur.size_mode;
   if (!SIZE_MODES.includes(mode)) throw new Error("size_mode must be one of ['verdict', 'random', 'fixed']");
+  const exitMode = has(data, "exit_mode") ? data.exit_mode : cur.exit_mode;
+  if (!["targets", "smart", "model"].includes(exitMode)) throw new Error("exit_mode must be one of ['targets', 'smart', 'model']");
+  if (exitMode === "model" && !hasModel) throw new Error("No learned model is loaded, so the learned exit can't be used");
+  const entryMode = has(data, "entry_mode") ? data.entry_mode : cur.entry_mode;
+  if (!["snipe", "confirm"].includes(entryMode)) throw new Error("entry_mode must be one of ['snipe', 'confirm']");
   const wallets = has(data, "blacklist") ? data.blacklist : cur.blacklist;
   if (!Array.isArray(wallets) || wallets.length > MAX_BLACKLIST || wallets.some((w) => typeof w !== "string" || !WALLET_RE.test(w)))
     throw new Error(`Blacklist must be a list of up to ${MAX_BLACKLIST} valid wallet addresses`);
@@ -256,6 +405,10 @@ function parseSettings(data, current) {
   out.allowed_verdicts = [...new Set(verdicts)];
   out.exit_on_creator_sell = flags.exit_on_creator_sell; out.auto_compound = flags.auto_compound; out.use_blacklist = flags.use_blacklist;
   out.require_scan = flags.honeypot_detection; out.size_mode = mode; out.blacklist = [...new Set(wallets)];
+  out.exit_mode = exitMode; out.entry_mode = entryMode;
+  out.confirm_gain_pct = num(data, "confirm_gain_pct", "Confirmation gain", 0, 500, cur.confirm_gain_pct);
+  out.confirm_min_flow_sol = num(data, "confirm_min_flow_sol", "Confirmation buying", 0, 100, cur.confirm_min_flow_sol);
+  out.confirm_window_s = num(data, "confirm_window_s", "Confirmation window", 5, 600, cur.confirm_window_s);
   return out;
 }
 
@@ -279,6 +432,7 @@ class TerminalState {
     this.source = opts.source || "demo"; this.simulated = opts.simulated !== false;
     this.start_sol = opts.start_sol === undefined ? 1 : opts.start_sol;
     this.strategy = strategy || defaultStrategy();
+    this.model_policy = opts.model ? new ModelExit(opts.model) : null;
     this.running = false; this.feed_status = "starting"; this._logSize = opts.log_size || 500;
     this.nowMs = opts.now || (() => Date.now());
     this._resetLocked();
@@ -286,7 +440,7 @@ class TerminalState {
   _resetLocked() {
     this.logs = []; this.log_total = 0; this.tokens = new Map(); this.notes = new Map(); this.closed_by_mint = new Map();
     this.events_seen = 0; this.clock = 0;
-    this.engine = new PaperEngine(this.strategy, this.start_sol, (t, k, m, x) => this._onNote(t, k, m, x));
+    this.engine = new PaperEngine(this.strategy, this.start_sol, (t, k, m, x) => this._onNote(t, k, m, x), this.model_policy);
     this.engine.enabled = this.running;
   }
   reset(startSol) {
@@ -302,7 +456,7 @@ class TerminalState {
     this._log(this.clock || this.nowMs(), "info", "", running ? "bot started" : "bot stopped: no new positions will open");
   }
   updateSettings(data) {
-    this.strategy = parseSettings(data, this.strategy); this.engine.s = this.strategy;
+    this.strategy = parseSettings(data, this.strategy, !!this.model_policy); this.engine.s = this.strategy;
     return settingsDict(this.strategy);
   }
   setFeedStatus(status) {
@@ -340,7 +494,7 @@ class TerminalState {
     return {
       running: this.running, source: this.source, simulated: this.simulated, feed_status: this.feed_status, clock: this.clock, events_seen: this.events_seen,
       paper: { start: this.start_sol, equity: e.cash + invested, cash: e.cash, open: e.positions.size },
-      settings: settingsDict(this.strategy), presets: PRESETS,
+      settings: settingsDict(this.strategy), presets: PRESETS, has_model: !!this.model_policy,
       stats: { window: win, trades: closed.length, wins: wins.length, win_rate: closed.length ? wins.length / closed.length * 100 : 0, pnl_sol: closed.reduce((a, c) => a + c.pnl_sol, 0) },
       counters: { launches: e.launch.size, scanned: e.scans.size, skipped: Object.assign({}, e.skipped) },
       rows: entries.map(([m, t]) => this._row(m, t)), logs: this.logs.slice(0, 200), log_total: this.log_total,
@@ -356,6 +510,7 @@ class TerminalState {
       Object.assign(row, { status: pos.exit_ready_ms !== null ? "exiting" : "holding", detail: pos.exit_reason || "", amount: pos.sol_in, pnl_sol: net, pnl_pct: net / pos.sol_in * 100 });
     } else if (closed) Object.assign(row, { status: "closed", detail: closed.reason, amount: closed.sol_in, pnl_sol: closed.pnl_sol, pnl_pct: closed.ret_pct });
     else if (e.pending.has(mint)) Object.assign(row, { status: "entering", detail: "" });
+    else if (e.watch.has(mint)) Object.assign(row, { status: "confirming", detail: "" });
     else if (this.notes.has(mint)) { let d = this.notes.get(mint); if (d.startsWith("skipped (")) d = d.slice(9); if (d.endsWith(")")) d = d.slice(0, -1); Object.assign(row, { status: "skipped", detail: d }); }
     else if (scan) Object.assign(row, { status: "watching", detail: scan.verdict });
     else Object.assign(row, { status: "scanning", detail: "" });
@@ -460,7 +615,7 @@ function makeApi(state) {
   };
 }
 
-const api = { PaperEngine, TerminalState, parseSettings, settingsDict, defaultStrategy, defaultStrategyFields, PRESETS, generateDemo, DemoFeed, makeApi, quoteBuy, quoteSell, Sim };
+const api = { PaperEngine, TerminalState, ModelExit, pathFeatures, tapeFromLaunch, TokenTape, smartDecide, parseSettings, settingsDict, defaultStrategy, defaultStrategyFields, PRESETS, generateDemo, DemoFeed, makeApi, quoteBuy, quoteSell, Sim };
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 if (typeof window !== "undefined" && root === window) {
   const state = new TerminalState(defaultStrategy(), { source: "demo", simulated: true });

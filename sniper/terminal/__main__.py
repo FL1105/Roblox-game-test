@@ -22,18 +22,23 @@ from .state import TerminalState
 
 def build(args) -> tuple[TerminalState, object, callable]:
     """Returns (state, feed, cleanup)."""
+    model_policy = None
+    if getattr(args, "model", None):
+        from ..policy.model import HoldModel, ModelExit
+
+        model_policy = ModelExit(HoldModel.load(args.model))
     if args.replay:
         events = read_jsonl(args.replay)
         if not events:
             raise SystemExit(f"{args.replay} has no events")
-        return TerminalState(source=f"replay {os.path.basename(args.replay)}", simulated=False), ReplayFeed(events, args.speed), lambda: None
+        return TerminalState(source=f"replay {os.path.basename(args.replay)}", simulated=False, model_policy=model_policy), ReplayFeed(events, args.speed), lambda: None
 
     if args.live:
         from ..listener.__main__ import DEFAULT_RPC, make_scan_fn
         from ..listener.live import JsonlSink, Listener
         from ..scanner.sources import SolanaRpc
 
-        state = TerminalState(source="live pump.fun", simulated=False)
+        state = TerminalState(source="live pump.fun", simulated=False, model_policy=model_policy)
         store = LaunchStore(args.db)
         jsonl = JsonlSink(args.events) if args.events else None
         rpc = SolanaRpc(args.rpc or os.environ.get("SOLANA_RPC_URL", DEFAULT_RPC))
@@ -46,7 +51,7 @@ def build(args) -> tuple[TerminalState, object, callable]:
 
         return state, LiveFeed(listener), cleanup
 
-    return TerminalState(source="demo", simulated=True), DemoFeed(speed=args.speed), lambda: None
+    return TerminalState(source="demo", simulated=True, model_policy=model_policy), DemoFeed(speed=args.speed), lambda: None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -57,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--speed", type=float, default=5.0, help="replay/demo speed multiplier (default 5)")
     p.add_argument("--rpc", help="Solana RPC URL for --live (default: $SOLANA_RPC_URL)")
     p.add_argument("--events", help="with --live: also append events to this JSONL file")
+    p.add_argument("--model", help="trained hold/sell model JSON; enables the learned exit option")
     p.add_argument("--db", default="launches.db", help="with --live: deployer-history database")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)

@@ -75,6 +75,12 @@ class Convert(unittest.TestCase):
         self.assertAlmostEqual(sell.sol, 0.6 * (1 - FEE), places=6)              # curve paid out 0.6 gross, user got it minus fee
         self.assertAlmostEqual(buy.tokens, 1_073_000_000.0 - st1.v_tokens, places=3)
 
+    def test_chk_row_makes_a_scan_note_and_old_style_first_observation_still_works(self):
+        rows = [create_row(), {"k": "obs", "t": 2000, "mint": "M1", "v_sol": 30.0, "v_tokens": 1_073_000_000.0}, {"k": "chk", "t": 2500, "mint": "M1", "rt_in_sol": 0.1, "rt_back_sol": 0.0969}]
+        ev = to_events(rows)
+        self.assertEqual([type(e).__name__ for e in ev], ["NewToken", "ScanNote"])
+        self.assertEqual((ev[1].t, ev[1].verdict), (2500, "PASS"))
+
     def test_unchanged_state_makes_no_trade_and_roundtrip_makes_a_scan(self):
         rows = [create_row(), {"k": "obs", "t": 2000, "mint": "M1", "v_sol": 30.0, "v_tokens": 1_073_000_000.0, "rt_in_sol": 0.1, "rt_back_sol": 0.0969}]
         kinds = [type(e).__name__ for e in to_events(rows)]
@@ -157,16 +163,47 @@ class CollectorTests(unittest.TestCase):
         col, rec = self.run_collector({"M": [(1002.0, s0), (1010.0, s1), (1030.0, s2)]})
         obs = [r for r in rec.rows if r["k"] == "obs"]
         self.assertEqual([round(r["v_sol"], 4) for r in obs], [30.0, 34.0, 31.0])
-        self.assertIn("rt_back_sol", obs[0])
-        self.assertLess(abs(obs[0]["check_err"]), 1e-6)
+        chk = [r for r in rec.rows if r["k"] == "chk"]
+        self.assertEqual(len(chk), 1)
+        self.assertIn("rt_back_sol", chk[0])
+        self.assertLess(abs(chk[0]["check_err"]), 1e-6)
+        self.assertLess(rec.rows.index(obs[0]), rec.rows.index(chk[0]))  # the price is recorded before the verification
         self.assertEqual([r["reason"] for r in rec.rows if r["k"] == "end"], ["idle"])
+
+    def test_a_trade_landing_between_the_two_check_quotes_does_not_make_a_token_off_curve(self):
+        class Moving(FakeJupiter):
+            calls = 0
+            async def buy(self, mint, sol):
+                Moving.calls += 1
+                if Moving.calls == 3:  # the state moves right after the first check quote
+                    self.script = {mint: [(0.0, CurveState(33.0, K0 / 33.0))]}
+                return await super().buy(mint, sol)
+        now = [1000.0]
+        clock = lambda: now[0]
+        async def sleep(d):
+            now[0] += d
+            await asyncio.sleep(0)
+        async def go():
+            jup, rec = Moving(clock), Recorder()
+            jup.script = {"M": [(0.0, CurveState(30.0, 1_073_000_000.0))]}
+            col = Collector(jup, rec, clock=clock, sleep=sleep)
+            col.on_create({"txType": "create", "mint": "M", "traderPublicKey": "C", "pool": "pump", "vSolInBondingCurve": 30.0, "vTokensInBondingCurve": 1_073_000_000.0, "initialBuy": 0, "solAmount": 0})
+            while col.tasks and now[0] < 1400:
+                await asyncio.sleep(0)
+            for t in list(col.tasks.values()):
+                t.cancel()
+            await asyncio.gather(*col.tasks.values(), return_exceptions=True)
+            return col, rec
+        col, rec = asyncio.run(go())
+        self.assertEqual(col.stats["off_curve"], 0)
+        self.assertEqual(len([r for r in rec.rows if r["k"] == "chk"]), 1)
 
     def test_one_probe_quote_per_poll_once_verified(self):
         s0 = CurveState(30.0, 1_073_000_000.0)
         col, rec = self.run_collector({"M": [(1002.0, s0), (1010.0, CurveState(34.0, K0 / 34.0))]})
         # after the first observation (probe + check + round trip) every poll is a single probe quote
         self.assertLess(col.jup.stats.get("requests", 0), 1)  # the fake does not count; real cost is asserted below
-        self.assertEqual(sum(1 for r in rec.rows if r["k"] == "obs" and "check_err" in r), 1)
+        self.assertEqual(sum(1 for r in rec.rows if r["k"] == "chk"), 1)
 
     def test_token_that_never_routes_is_given_up_on(self):
         col, rec = self.run_collector({"M": []})
@@ -181,8 +218,9 @@ class CollectorTests(unittest.TestCase):
         odd = CurveState(30.0, 536_500_000.0)  # k is half the launch k, so the one-quote state is wrong and the 3 SOL check shows it (2.6% miss)
         col, rec = self.run_collector({"M": [(1002.0, odd)]})
         self.assertEqual([r["reason"] for r in rec.rows if r["k"] == "end"], ["off_curve"])
-        self.assertEqual([r for r in rec.rows if r["k"] == "obs"], [])
+        self.assertEqual([r for r in rec.rows if r["k"] == "chk"], [])
         self.assertEqual(col.stats["off_curve"], 1)
+        self.assertEqual(unpriceable(rec.rows), {"M"})  # and the converter then ignores its first observation
 
     def test_mayhem_launches_are_recorded_as_such_but_never_tracked(self):
         col, rec = self.run_collector({"M": [(1002.0, CurveState(30.0, 1_073_000_000.0))]}, mayhem={"M"})

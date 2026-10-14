@@ -45,10 +45,17 @@ def settings_dict(s: Strategy) -> dict:
         "verdicts": sorted(s.allowed_verdicts),
         "fee_bps": s.fee_bps,
         "tx_cost_sol": s.tx_cost_sol,
+        "exit_mode": s.exit_mode,
+        "entry_mode": s.entry_mode,
+        "confirm_gain_pct": s.confirm_gain_pct,
+        "confirm_min_flow_sol": s.confirm_min_flow_sol,
+        "confirm_window_s": s.confirm_window_s,
     }
 
 
 SIZE_MODES = ("verdict", "random", "fixed")
+EXIT_MODES = ("targets", "smart", "model")
+ENTRY_MODES = ("snipe", "confirm")
 WALLET_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 MAX_BLACKLIST = 200
 
@@ -62,7 +69,7 @@ def _num(data: dict, key: str, label: str, lo: float, hi: float, current: float)
     return float(v)
 
 
-def parse_settings(data: dict, current: Strategy) -> Strategy:
+def parse_settings(data: dict, current: Strategy, has_model: bool = False) -> Strategy:
     """Validate a (possibly partial) settings payload from the UI and return the new Strategy."""
     cur = settings_dict(current)
     unknown = set(data) - set(cur)
@@ -86,6 +93,14 @@ def parse_settings(data: dict, current: Strategy) -> Strategy:
     mode = data.get("size_mode", cur["size_mode"])
     if mode not in SIZE_MODES:
         raise ValueError(f"size_mode must be one of {list(SIZE_MODES)}")
+    exit_mode = data.get("exit_mode", cur["exit_mode"])
+    if exit_mode not in EXIT_MODES:
+        raise ValueError(f"exit_mode must be one of {list(EXIT_MODES)}")
+    if exit_mode == "model" and not has_model:
+        raise ValueError("No learned model is loaded, so the learned exit can't be used")
+    entry_mode = data.get("entry_mode", cur["entry_mode"])
+    if entry_mode not in ENTRY_MODES:
+        raise ValueError(f"entry_mode must be one of {list(ENTRY_MODES)}")
     wallets = data.get("blacklist", cur["blacklist"])
     if not isinstance(wallets, list) or len(wallets) > MAX_BLACKLIST or any(not isinstance(w, str) or not WALLET_RE.match(w) for w in wallets):
         raise ValueError(f"Blacklist must be a list of up to {MAX_BLACKLIST} valid wallet addresses")
@@ -113,6 +128,11 @@ def parse_settings(data: dict, current: Strategy) -> Strategy:
         require_scan=flags["honeypot_detection"],
         size_mode=mode,
         blacklist=frozenset(wallets),
+        exit_mode=exit_mode,
+        entry_mode=entry_mode,
+        confirm_gain_pct=_num(data, "confirm_gain_pct", "Confirmation gain", 0, 500, cur["confirm_gain_pct"]),
+        confirm_min_flow_sol=_num(data, "confirm_min_flow_sol", "Confirmation buying", 0, 100, cur["confirm_min_flow_sol"]),
+        confirm_window_s=_num(data, "confirm_window_s", "Confirmation window", 5, 600, cur["confirm_window_s"]),
     )
 
 
@@ -137,9 +157,10 @@ PRESETS = {
 
 
 class TerminalState:
-    def __init__(self, strategy: Strategy | None = None, *, source: str = "demo", simulated: bool = True, start_sol: float = 1.0, log_size: int = 500):
+    def __init__(self, strategy: Strategy | None = None, *, source: str = "demo", simulated: bool = True, start_sol: float = 1.0, log_size: int = 500, model_policy=None):
         self.lock = threading.RLock()
         self.source, self.simulated, self.start_sol = source, simulated, start_sol
+        self.model_policy = model_policy  # a policy.model.ModelExit; enables the learned exit
         self.strategy = strategy or default_strategy()
         self.running = False
         self.feed_status = "starting"  # starting | live | finished | error: <msg>
@@ -155,7 +176,7 @@ class TerminalState:
         self.closed_by_mint: dict[str, ClosedTrade] = {}
         self.events_seen = 0
         self.clock = 0
-        self.engine = PaperEngine(self.strategy, self.start_sol, on_note=self._on_note)
+        self.engine = PaperEngine(self.strategy, self.start_sol, on_note=self._on_note, model_policy=self.model_policy)
         self.engine.enabled = self.running
 
     def reset(self, start_sol: float | None = None) -> None:
@@ -175,7 +196,7 @@ class TerminalState:
 
     def update_settings(self, data: dict) -> dict:
         with self.lock:
-            self.strategy = parse_settings(data, self.strategy)
+            self.strategy = parse_settings(data, self.strategy, has_model=self.model_policy is not None)
             self.engine.s = self.strategy
             return settings_dict(self.strategy)
 
@@ -232,6 +253,7 @@ class TerminalState:
                 "paper": {"start": self.start_sol, "equity": equity, "cash": e.cash, "open": len(e.positions)},
                 "settings": settings_dict(self.strategy),
                 "presets": PRESETS,
+                "has_model": self.model_policy is not None,
                 "stats": {
                     "window": window,
                     "trades": len(closed),
@@ -264,6 +286,8 @@ class TerminalState:
             row.update(status="closed", detail=closed.reason, amount=closed.sol_in, pnl_sol=closed.pnl_sol, pnl_pct=closed.ret_pct)
         elif mint in e.pending:
             row.update(status="entering", detail="")
+        elif mint in e.watch:
+            row.update(status="confirming", detail="")
         elif mint in self.notes:
             row.update(status="skipped", detail=self.notes[mint].removeprefix("skipped (").removesuffix(")"))
         elif scan is not None:

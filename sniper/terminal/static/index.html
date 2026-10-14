@@ -357,6 +357,9 @@ const HOLD = [[60, "1 minute"], [300, "5 minutes"], [900, "15 minutes"], [1800, 
 const SPEED = [[300, "Instant: 0.3 s delay"], [800, "Fast: 0.8 s delay"], [2000, "Normal: 2 s delay"], [5000, "Slow: 5 s delay"]];
 const MODES = [["verdict", "By verdict (CAUTION = min)"], ["random", "Random in range"], ["fixed", "Fixed (always the maximum)"]];
 const RISK = [["low", "Low risk: only PASS tokens"], ["medium", "Medium risk: PASS + CAUTION"], ["high", "High risk: PASS + CAUTION + AVOID"]];
+const ENTRY = [["snipe", "Snipe: buy as soon as it clears the scan"], ["confirm", "Confirm: wait for real buyers"]];
+const EXITS = [["targets", "Fixed targets (take profit / stop loss)"], ["smart", "Smart exit (momentum + buying pressure)"]];
+const EXIT_MODEL = ["model", "Learned model (trained on real launches)"];
 const RISK_SETS = {low: ["PASS"], medium: ["PASS", "CAUTION"], high: ["PASS", "CAUTION", "AVOID"]};
 const TABS = {
   trading: [
@@ -371,12 +374,17 @@ const TABS = {
     {k: "trailing_stop_pct", t: "num", l: "Trailing Stop (%)", h: "Once in profit, sell after this % drop from the best price. 0 = off."},
     {k: "size_mode", t: "sel", opts: MODES, l: "Position Size Mode", h: "How the bot picks a size between the minimum and maximum."},
     {k: "auto_compound", t: "tog", l: "Auto-compound", h: "Scale position sizes with your paper bankroll: grow after wins, shrink after losses."},
+    {k: "entry_mode", t: "sel", opts: ENTRY, l: "Entry Mode", h: "Snipe buys as soon as a token clears the scan. Confirm waits for proof that real buyers have arrived."},
+    {k: "confirm_gain_pct", t: "num", l: "Confirm: Min Gain (%)", h: "Confirm mode: the price must be this far above the launch price."},
+    {k: "confirm_min_flow_sol", t: "num", l: "Confirm: Net Buying (SOL)", h: "Confirm mode: at least this much more SOL bought than sold over the last 15 s."},
+    {k: "confirm_window_s", t: "num", l: "Confirm: Window (s)", h: "Confirm mode: give up on a token if it hasn't confirmed within this long."},
     {k: "use_blacklist", t: "tog", l: "Use wallet blacklist", h: "Skip creators on your list below, plus any creator seen dumping this session."},
     {k: "blacklist", t: "wallets", l: "Blacklisted creator wallets", h: "One address per line (up to 200)."}
   ],
   safety: [
     {k: "honeypot_detection", t: "tog", l: "Honeypot Detection", h: "Only buy tokens the scanner has cleared. Off = skip the scan and buy on the other rules alone."},
     {k: "exit_on_creator_sell", t: "tog", l: "Rug Pull Protection", h: "Sell right away when the token's creator sells (checked on every trade)."},
+    {k: "exit_mode", t: "sel", opts: EXITS, l: "Exit Strategy", h: "Fixed targets sells at your take-profit/stop. Smart exit lets winners run while buying continues and sells when momentum or buying fades. The learned option appears when a trained model is loaded."},
     {k: "latency_ms", t: "sel", opts: SPEED, l: "Trading Speed", h: "Delay between deciding and filling. Slower means the price has longer to move against you."},
     {k: "max_hold_s", t: "sel", opts: HOLD, l: "Max Hold Time", h: "Sell after this long if neither target is hit. A token is only priced while the recorder follows it (10 min by default)."}
   ],
@@ -461,7 +469,9 @@ function buildPresets(presets) {
   }
   box.append(head, cards); host.insertBefore(box, host.firstChild);
 }
-function openCfg() { buildCfg(); if (last) { buildPresets(last.presets); fillCfg(last.settings); } $("cfg").classList.add("open"); $("cfgsave").focus({preventScroll: true}); }
+function openCfg() { buildCfg(); if (last) {
+    const sel = document.querySelector("[aria-label='Exit Strategy']");
+    if (sel && last.has_model && !sel.querySelector("option[value=model]")) { const o = el("option", "", EXIT_MODEL[1]); o.value = "model"; sel.append(o); } buildPresets(last.presets); fillCfg(last.settings); } $("cfg").classList.add("open"); $("cfgsave").focus({preventScroll: true}); }
 function closeCfg() { $("cfg").classList.remove("open"); }
 async function saveCfg() {
   const body = {};
@@ -506,13 +516,14 @@ function sparkline(host, ys, start) {
 }
 
 /* ---- rows ---- */
-const CLOSED = {trailing_stop: ["TRAILING STOP", "g"], take_profit: ["TAKE PROFIT", "g"], stop_loss: ["STOP LOSS", "r"], creator_sold: ["CREATOR SOLD", "r"], timeout: ["TIMED OUT", "a"], graduated: ["GRADUATED", "g"], end_of_data: ["CLOSED", ""]};
-const SKIPS = {slippage: "SLIPPAGE", low_liquidity: "LOW LIQUIDITY", blacklisted: "BLACKLISTED", bot_stopped: "BOT STOPPED", dev_buy: "DEV BUY", max_open: "MAX OPEN", mcap_too_high: "TOO LATE", mcap_too_high_at_fill: "TOO LATE", no_cash: "NO CASH"};
+const CLOSED = {profit_stall: ["PROFIT (STALLED)", "g"], smart_trail: ["SMART TRAIL", "g"], stalled: ["STALLED OUT", "a"], sell_pressure: ["SELL PRESSURE", "a"], model_sell: ["MODEL SELL", "a"], trailing_stop: ["TRAILING STOP", "g"], take_profit: ["TAKE PROFIT", "g"], stop_loss: ["STOP LOSS", "r"], creator_sold: ["CREATOR SOLD", "r"], timeout: ["TIMED OUT", "a"], graduated: ["GRADUATED", "g"], end_of_data: ["CLOSED", ""]};
+const SKIPS = {no_confirmation: "NO CONFIRMATION", slippage: "SLIPPAGE", low_liquidity: "LOW LIQUIDITY", blacklisted: "BLACKLISTED", bot_stopped: "BOT STOPPED", dev_buy: "DEV BUY", max_open: "MAX OPEN", mcap_too_high: "TOO LATE", mcap_too_high_at_fill: "TOO LATE", no_cash: "NO CASH"};
 function statusChip(r) {
   switch (r.status) {
     case "holding": return ["HOLDING", "g"];
     case "exiting": return ["EXITING", "a"];
     case "entering": return ["ENTERING", "a"];
+    case "confirming": return ["CONFIRMING", "a"];
     case "closed": return CLOSED[r.detail] || ["CLOSED", ""];
     case "skipped": return ["SKIPPED · " + (r.detail.startsWith("verdict:") ? r.detail.slice(8) : SKIPS[r.detail] || r.detail.toUpperCase()), ""];
     case "watching": return ["WATCHING · " + r.detail, ""];

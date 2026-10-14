@@ -23,7 +23,7 @@ PUMPPORTAL_URL = "wss://pumpportal.fun/api/data"
 PROBE_SOL = 0.1  # one cheap quote per poll; the three-quote snapshot only runs when this changes
 GRADUATED_BELOW_TOKENS = 280_000_000
 CHECK_SOL = 3.0       # the second quote size used to verify a token follows the standard curve (a big size is more sensitive)
-CHECK_TOLERANCE = 0.005  # relative miss of that check beyond which a token is treated as off-curve
+CHECK_TOLERANCE = 0.005  # relative disagreement between the two sizes' states beyond which a token is treated as off-curve
 
 
 class Recorder:
@@ -77,14 +77,23 @@ class Collector:
         self.stats["ended"] += 1
         self.rec.write({"k": "end", "t": self.now_ms(), "mint": mint, "reason": reason})
 
-    async def _check_curve(self, mint: str, state: tuple[float, float]) -> float | None:
-        """Quote a second size and compare with what the one-quote state predicts. Ordinary tokens land within
-        ~0.05% at every size from 0.01 to 3 SOL; off-curve tokens miss by percents."""
-        out = await self.jup.buy(mint, CHECK_SOL)
-        if out is None:
-            return None
-        a = (1 - FEE) * CHECK_SOL
-        return state[1] * a / (state[0] + a) / out - 1
+    async def _check_curve(self, mint: str, k: float) -> float | None:
+        """Is this token on the standard curve? Quote two sizes back to back, turn each into a state using the launch k,
+        and compare. On-curve tokens agree to ~0.1%; off-curve ones disagree by percents. A trade can land between the two
+        quotes, so a disagreement is retried (twice) before it counts. Returns the last relative disagreement."""
+        diff = None
+        for _ in range(3):
+            a = await self.jup.buy(mint, PROBE_SOL)
+            b = await self.jup.buy(mint, CHECK_SOL)
+            if a is None or b is None:
+                return None
+            s1, s2 = reserves_from_probe(k, PROBE_SOL, a), reserves_from_probe(k, CHECK_SOL, b)
+            if s1 is None or s2 is None:
+                return None
+            diff = s2[0] / s1[0] - 1
+            if abs(diff) <= CHECK_TOLERANCE:
+                return diff
+        return diff
 
     async def _track(self, mint: str, k: float) -> None:
         """One buy quote per poll gives the exact state, because k = v_sol * v_tokens never changes on a pump.fun
@@ -114,19 +123,19 @@ class Collector:
                     last_probe, last_change = probe, now
                     state = reserves_from_probe(k, PROBE_SOL, probe)
                     if state is not None:
-                        rec = {"k": "obs", "t": self.now_ms(), "mint": mint, "probe": probe, "v_sol": state[0], "v_tokens": state[1]}
+                        # Record the price the moment we have it; verification and the sell check follow as a separate row,
+                        # so a request queue never delays the first observation.
+                        self.rec.write({"k": "obs", "t": self.now_ms(), "mint": mint, "probe": probe, "v_sol": state[0], "v_tokens": state[1]})
                         if first:
-                            err = await self._check_curve(mint, state)
-                            rec["check_err"] = err
+                            first = False
+                            err = await self._check_curve(mint, k)
                             if err is not None:
                                 self.check_errors.append(err)
                             if err is not None and abs(err) > CHECK_TOLERANCE:
                                 self.stats["off_curve"] += 1
                                 return self._end(mint, "off_curve")  # quotes do not follow the standard curve: unpriceable
                             back = await self.jup.sell(mint, probe)  # can this token actually be sold, and at what cost?
-                            rec["rt_in_sol"], rec["rt_back_sol"] = PROBE_SOL, back
-                            first = False
-                        self.rec.write(rec)
+                            self.rec.write({"k": "chk", "t": self.now_ms(), "mint": mint, "check_err": err, "rt_in_sol": PROBE_SOL, "rt_back_sol": back})
                         if state[1] <= GRADUATED_BELOW_TOKENS:
                             return self._end(mint, "graduated")
             probe = None
