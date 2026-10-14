@@ -1,6 +1,7 @@
 """Usage:
     python -m sniper.paper replay events.jsonl [strategy options]
     python -m sniper.paper sweep  events.jsonl [strategy options]
+    python -m sniper.paper compare events.jsonl [--model model.json] [--tx-cost X]
 """
 
 from __future__ import annotations
@@ -75,7 +76,7 @@ def cmd_sweep(events: list[Event], s: Strategy, start_sol: float, train_frac: fl
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="sniper.paper", description="Paper-trade recorded pump.fun events")
-    p.add_argument("command", choices=["replay", "sweep"])
+    p.add_argument("command", choices=["replay", "sweep", "compare"])
     p.add_argument("events", help="JSONL file written by sniper.listener")
     d = Strategy()
     p.add_argument("--tp", type=float, default=d.take_profit_pct, help="take profit %% (net of costs)")
@@ -92,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-entry-mcap", type=float, default=d.max_entry_mcap_sol)
     p.add_argument("--start-sol", type=float, default=1.0)
     p.add_argument("--train-frac", type=float, default=0.5)
+    p.add_argument("--model", help="trained hold/sell model JSON (compare only)")
+    p.add_argument("--sell-margin", type=float, default=0.10, help="model: sell when p_down - p_up reaches this")
     a = p.parse_args(argv)
 
     s = Strategy(
@@ -109,6 +112,11 @@ def main(argv: list[str] | None = None) -> int:
         print("error: no launches in that file", file=sys.stderr)
         return 2
 
+    if a.command == "compare":
+        from ..policy.model import HoldModel
+        from .compare import compare
+        print(compare(events, HoldModel.load(a.model) if a.model else None, a.tx_cost, a.latency_ms, a.sell_margin))
+        return 0
     if a.command == "replay":
         cmd_replay(events, s, a.start_sol)
     else:

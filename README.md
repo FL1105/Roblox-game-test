@@ -88,8 +88,8 @@ listener retries a few times before believing a brand-new mint "does not exist".
 ## How the paper trader models reality (`sniper/paper`)
 
 - A decision at time T fills at the curve state at **T + latency** (default 800 ms): price can move against you.
-- Entry and exit each pay the **pump fee** (default 1%, verify the current rate) and a flat **per-tx cost**
-  (default 0.003 SOL priority fee/tip). At 0.1 SOL trades the tx costs alone are ~6% of the position, on top of ~2% in pump fees.
+- Entry and exit each pay the **pump fee** (default 1.238%, measured on live quotes) and a flat **per-tx cost**
+  (default 0.003 SOL priority fee/tip). At 0.1 SOL trades the tx costs alone are ~6% of the position, on top of ~2.5% in pump fees (a real quoted round trip at 0.1 SOL loses about 3.1%).
 - Take-profit and stop-loss are measured **net of costs**. At 0.1 SOL a 30% net target needs roughly a 40% price move.
 - Exits on: take-profit, stop-loss, max hold, **creator selling**, or the curve graduating.
 - Position size is fixed or a fraction of equity (`--size-frac`) for compounding.

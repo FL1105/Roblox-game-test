@@ -43,7 +43,7 @@ function makeRng(seed) {
 function defaultStrategyFields() {
   return {
     take_profit_pct: 30, stop_loss_pct: 20, max_hold_s: 300, size_sol: 0.1, size_frac: null, size_caution_sol: null,
-    max_open: 3, latency_ms: 800, fee_bps: 100, tx_cost_sol: 0.003, exit_on_creator_sell: true, require_scan: true,
+    max_open: 3, latency_ms: 800, fee_bps: 123.8, tx_cost_sol: 0.003, exit_on_creator_sell: true, require_scan: true,
     allowed_verdicts: ["PASS", "CAUTION"], max_dev_buy_pct: 15, max_entry_mcap_sol: 60, slippage_pct: 10,
     trailing_stop_pct: 0, min_liquidity_sol: 0, size_mode: "verdict", auto_compound: false, use_blacklist: true, blacklist: [],
   };
@@ -364,7 +364,7 @@ class TerminalState {
 }
 
 /* ---------------- synthetic demo market (same archetypes as sniper/pump/synth.py; its own random numbers) ---------------- */
-const FEE_BPS = 100;
+const FEE_BPS = 123.8;
 class Sim {
   constructor(mint, creator, t) { this.mint = mint; this.creator = creator; this.t = t; this.state = { v_sol: 30, v_tokens: 1073000000 }; }
   _buy(sol) { const tokens = quoteBuy(this.state, sol, FEE_BPS); this.state = { v_sol: this.state.v_sol + sol * (1 - FEE_BPS / 10000), v_tokens: this.state.v_tokens - tokens }; return tokens; }

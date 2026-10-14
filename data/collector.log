@@ -1,0 +1,2 @@
+01:03:13 tracking 0 | {'created': 0, 'routable': 0, 'never_routable': 0, 'snapshots': 0, 'torn': 0, 'ended': 0, 'skipped_capacity': 0} | jupiter {'requests': 0, 'ok': 0, 'no_route': 0, 'throttled': 0, 'errors': 0} | fee estimate n/a
+01:04:18 tracking 10 | {'created': 10, 'routable': 9, 'never_routable': 0, 'snapshots': 24, 'torn': 9, 'ended': 0, 'skipped_capacity': 0} | jupiter {'requests': 253, 'ok': 215, 'no_route': 2, 'throttled': 36, 'errors': 0} | fee estimate n/a

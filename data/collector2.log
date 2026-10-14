@@ -1,0 +1,3 @@
+01:05:00 tracking 0 | {'created': 0, 'routable': 0, 'never_routable': 0, 'snapshots': 0, 'torn': 0, 'ended': 0, 'skipped_capacity': 0} | jupiter {'requests': 0, 'ok': 0, 'no_route': 0, 'throttled': 0, 'errors': 0} @ 14.0 rps | fee estimate n/a
+01:06:00 tracking 23 | {'created': 23, 'routable': 13, 'never_routable': 0, 'snapshots': 18, 'torn': 11, 'ended': 0, 'skipped_capacity': 0} | jupiter {'requests': 207, 'ok': 188, 'no_route': 4, 'throttled': 14, 'errors': 0} @ 2.1 rps | fee estimate n/a
+01:07:04 tracking 36 | {'created': 37, 'routable': 31, 'never_routable': 1, 'snapshots': 33, 'torn': 11, 'ended': 1, 'skipped_capacity': 0} | jupiter {'requests': 330, 'ok': 293, 'no_route': 4, 'throttled': 32, 'errors': 0} @ 2.1 rps | fee estimate n/a

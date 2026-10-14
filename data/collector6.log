@@ -1,0 +1,2 @@
+01:21:28 tracking 0 | {'created': 0, 'routable': 0, 'never_routable': 0, 'ended': 0, 'off_curve': 0, 'mayhem_skipped': 0, 'skipped_capacity': 0} | jupiter {'requests': 0, 'ok': 0, 'no_route': 0, 'throttled': 0, 'errors': 0} @ 12.0 rps | check n/a
+01:22:30 tracking 14 | {'created': 17, 'routable': 14, 'never_routable': 0, 'ended': 1, 'off_curve': 1, 'mayhem_skipped': 2, 'skipped_capacity': 0} | jupiter {'requests': 155, 'ok': 146, 'no_route': 1, 'throttled': 7, 'errors': 0} @ 4.5 rps | median |check err| 0.000% (n=13)

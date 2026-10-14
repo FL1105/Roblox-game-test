@@ -12,7 +12,7 @@ import random
 from .curve import CurveState, quote_buy
 from .events import Event, NewToken, ScanNote, Trade
 
-FEE_BPS = 100
+FEE_BPS = 123.8  # matches the fee measured on live pump.fun quotes
 
 
 class Sim:

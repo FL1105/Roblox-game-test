@@ -89,10 +89,10 @@ class Costs(unittest.TestCase):
         paid = replay(events, replace(S, tx_cost_sol=0.01)).closed[0]
         self.assertAlmostEqual(free.pnl_sol - paid.pnl_sol, 0.02, places=9)
 
-    def test_round_trip_at_flat_price_loses_about_two_percent(self):
+    def test_round_trip_at_flat_price_loses_about_three_percent(self):  # 2 x 1.25% fee + a little impact; live quotes show 3.1%
         sim = Sim()
         r = replay([sim.create(), sim.scan(1100), sim.buy(1200, 0.01)], S)
-        self.assertTrue(-3.0 < r.closed[0].ret_pct < -1.5, r.closed[0].ret_pct)
+        self.assertTrue(-3.4 < r.closed[0].ret_pct < -2.6, r.closed[0].ret_pct)
 
     def test_bankroll_equals_start_plus_pnl(self):
         sim1, sim2 = Sim("A"), Sim("B")

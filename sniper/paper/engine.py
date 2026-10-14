@@ -12,12 +12,15 @@ Treat results as an optimistic upper bound.
 
 from __future__ import annotations
 
+import math
 import random
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable
 
 from ..pump.curve import VIRTUAL_START_SOL, CurveState, quote_buy, quote_sell
+from ..policy import smart as smart_rules
+from ..policy.features import TokenTape, path_features, tape_from_launch
 from ..pump.events import TOTAL_SUPPLY, Event, NewToken, ScanNote, Trade
 
 
@@ -31,7 +34,7 @@ class Strategy:
     size_caution_sol: float | None = None  # smaller size for CAUTION verdicts (None = same as size_sol)
     max_open: int = 3
     latency_ms: int = 800
-    fee_bps: float = 100            # pump.fun fee: verify the current rate
+    fee_bps: float = 123.8          # pump.fun's total fee per side, measured on live quotes (Oct 2026)
     tx_cost_sol: float = 0.003      # priority fee + tip, paid on each side
     exit_on_creator_sell: bool = True
     require_scan: bool = True
@@ -45,6 +48,12 @@ class Strategy:
     auto_compound: bool = False     # scale sizes by equity / starting bankroll
     use_blacklist: bool = True
     blacklist: frozenset = frozenset()  # creator wallets never to buy; rugs seen this session are added automatically
+    exit_mode: str = "targets"       # "targets" (take-profit / trailing) | "smart" (momentum + flow rules) | "model" (learned)
+    smart: smart_rules.SmartParams | None = None  # None = derive from take_profit_pct
+    entry_mode: str = "snipe"        # "snipe" (buy once cleared) | "confirm" (wait for evidence that real buyers have arrived)
+    confirm_gain_pct: float = 10.0  # confirm: price must be this far above the launch price ...
+    confirm_min_flow_sol: float = 0.0  # ... with at least this much net SOL bought over the last 15 s ...
+    confirm_window_s: float = 60.0  # ... within this long after the token cleared the scan
 
 
 @dataclass
@@ -86,8 +95,10 @@ class EngineResult:
 
 
 class PaperEngine:
-    def __init__(self, strategy: Strategy, start_sol: float = 1.0, on_note: Callable[[int, str, str, str], None] | None = None):
+    def __init__(self, strategy: Strategy, start_sol: float = 1.0, on_note: Callable[[int, str, str, str], None] | None = None, model_policy=None):
         self.s = strategy
+        self.model_policy = model_policy  # a policy.model.ModelExit, used when exit_mode == "model"
+        self.tapes: dict[str, TokenTape] = {}
         self.enabled = True  # when False no new positions open; open ones are still managed
         self.on_note = on_note  # (t_ms, kind, mint, text): entry / exit / skip
         self.start_sol = start_sol
@@ -96,6 +107,7 @@ class PaperEngine:
         self.launch: dict[str, NewToken] = {}
         self.scans: dict[str, ScanNote] = {}
         self.pending: dict[str, int] = {}
+        self.watch: dict[str, int] = {}  # confirm mode: mint -> deadline (ms)
         self.pending_state: dict[str, CurveState] = {}  # curve at decision time, for the slippage check
         self.rng = random.Random(0)  # seeded so a replay is reproducible
         self.creator_sold: dict[str, float] = {}
@@ -118,9 +130,12 @@ class PaperEngine:
     def on_event(self, ev: Event) -> None:
         self.last_t = max(self.last_t, ev.t)
         self._request_timeouts(ev.t)
+        self._expire_watches(ev.t)
+        self._review_positions(ev.t)
         self._fill_due(ev.t)
         if isinstance(ev, NewToken):
             self.launch[ev.mint] = ev
+            self.tapes[ev.mint] = tape_from_launch(ev)
             self.curve[ev.mint] = CurveState(ev.v_sol, ev.v_tokens)
             if not self.s.require_scan:
                 self._consider_entry(ev.mint, ev.t)
@@ -141,15 +156,44 @@ class PaperEngine:
         if self.s.require_scan:
             self.skipped["no_scan"] += sum(1 for m in self.launch if m not in self.scans)
         self.skipped["entry_never_filled"] += len(self.pending)
+        self.skipped["no_confirmation"] += len(self.watch)
         return EngineResult(
             self.s, self.start_sol, self.cash, self.closed, self.equity_curve, self.skipped, len(self.launch)
         )
 
     # ---- entries ----
     def _consider_entry(self, mint: str, decision_t: int) -> None:
-        launch, state = self.launch[mint], self.curve[mint]
-        if mint in self.pending or mint in self.positions:
+        """A token has cleared the scan. Snipe mode buys now; confirm mode starts watching it."""
+        if mint in self.pending or mint in self.positions or mint in self.watch:
             return
+        if self.s.entry_mode == "confirm" and self.enabled:
+            self.watch[mint] = decision_t + int(self.s.confirm_window_s * 1000)
+            self._check_watch(mint, decision_t)  # it may already qualify
+            return
+        self._try_entry(mint, decision_t)
+
+    def _check_watch(self, mint: str, now: int) -> None:
+        deadline = self.watch.get(mint)
+        if deadline is None:
+            return
+        if now > deadline:
+            del self.watch[mint]
+            self._skip(now, mint, "no_confirmation")
+            return
+        tape = self.tapes.get(mint)
+        if tape is None:
+            return
+        f = path_features(tape, now)
+        if (math.exp(f["log_ret_launch"]) - 1) * 100 >= self.s.confirm_gain_pct and f["flow_15"] >= self.s.confirm_min_flow_sol:
+            del self.watch[mint]
+            self._try_entry(mint, now)
+
+    def _expire_watches(self, now: int) -> None:
+        for mint in [m for m, d in self.watch.items() if now > d]:
+            self._check_watch(mint, now)
+
+    def _try_entry(self, mint: str, decision_t: int) -> None:
+        launch, state = self.launch[mint], self.curve[mint]
         if not self.enabled:
             self._skip(decision_t, mint, "bot_stopped")
         elif self.s.use_blacklist and (launch.creator in self.s.blacklist or launch.creator in self.known_ruggers):
@@ -206,6 +250,10 @@ class PaperEngine:
     def _on_trade(self, tr: Trade) -> None:
         state = CurveState(tr.v_sol, tr.v_tokens)
         self.curve[tr.mint] = state
+        if tr.mint in self.tapes:
+            self.tapes[tr.mint].add(tr.t, tr.v_sol, tr.v_tokens)
+        if tr.mint in self.watch:
+            self._check_watch(tr.mint, tr.t)
         launch = self.launch.get(tr.mint)
         if launch and tr.trader == launch.creator and tr.side == "sell" and launch.dev_tokens > 0:
             sold = self.creator_sold[tr.mint] = self.creator_sold.get(tr.mint, 0.0) + tr.tokens
@@ -220,17 +268,45 @@ class PaperEngine:
         elif state.graduated:
             reason = "graduated"
         else:
-            net = quote_sell(state, pos.tokens, self.s.fee_bps) - 2 * self.s.tx_cost_sol
-            pos.peak_net = max(pos.peak_net, net)
-            ret = (net / pos.sol_in - 1) * 100
-            if ret >= self.s.take_profit_pct:
-                reason = "take_profit"
-            elif self.s.trailing_stop_pct > 0 and pos.peak_net > pos.sol_in and net <= pos.peak_net * (1 - self.s.trailing_stop_pct / 100):
-                reason = "trailing_stop"
-            elif ret <= -self.s.stop_loss_pct:
-                reason = "stop_loss"
+            reason = self._exit_reason(pos, state, tr.t)
         if reason:
             pos.exit_reason, pos.exit_ready_ms = reason, tr.t + self.s.latency_ms
+
+    def _exit_reason(self, pos: Position, state: CurveState, now: int) -> str | None:
+        """Profit-taking and cutting decisions for a held position at time `now`. Always updates the position's peak."""
+        s = self.s
+        net = quote_sell(state, pos.tokens, s.fee_bps) - 2 * s.tx_cost_sol
+        pos.peak_net = max(pos.peak_net, net)
+        ret = (net / pos.sol_in - 1) * 100
+        if s.exit_mode == "targets":
+            if ret >= s.take_profit_pct:
+                return "take_profit"
+            if s.trailing_stop_pct > 0 and pos.peak_net > pos.sol_in and net <= pos.peak_net * (1 - s.trailing_stop_pct / 100):
+                return "trailing_stop"
+            if ret <= -s.stop_loss_pct:
+                return "stop_loss"
+            return None
+        if ret <= -s.stop_loss_pct:
+            return "stop_loss"
+        tape = self.tapes.get(pos.mint)
+        if tape is None:
+            return None
+        feats = path_features(tape, now)
+        peak_ret = (pos.peak_net / pos.sol_in - 1) * 100
+        if s.exit_mode == "model" and self.model_policy is not None:
+            return self.model_policy.decide(ret, peak_ret, feats)
+        params = s.smart or smart_rules.SmartParams(tp_floor=s.take_profit_pct, tp_cap=max(150.0, 4 * s.take_profit_pct))
+        return smart_rules.decide(params, ret, peak_ret, feats)
+
+    def _review_positions(self, now: int) -> None:
+        """Smart and model modes also act on time passing (a token that goes quiet), not only on its trades."""
+        if self.s.exit_mode == "targets":
+            return
+        for pos in self.positions.values():
+            if pos.exit_ready_ms is None:
+                reason = self._exit_reason(pos, self.curve[pos.mint], now)
+                if reason:
+                    pos.exit_reason, pos.exit_ready_ms = reason, now + self.s.latency_ms
 
     def _request_timeouts(self, now: int) -> None:
         hold_ms = int(self.s.max_hold_s * 1000)
