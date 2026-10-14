@@ -254,6 +254,8 @@ class TerminalState:
                 "settings": settings_dict(self.strategy),
                 "presets": PRESETS,
                 "has_model": self.model_policy is not None,
+                "sources": [],
+                "source_id": None,
                 "stats": {
                     "window": window,
                     "trades": len(closed),

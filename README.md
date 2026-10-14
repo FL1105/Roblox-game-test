@@ -56,6 +56,30 @@ deliberately absent: they define no behaviour to test.
 Browser click test: `python -m sniper.terminal --no-browser &`, then `npm i playwright-core` and
 `node e2e/terminal_click_test.js` (see the file header; it changes that instance's settings).
 
+## Real data and the decision system
+
+```
+python -m sniper.live --out data/raw.jsonl --minutes 600       # record real launches + exact price paths (read-only)
+python -m sniper.live.tools events data/raw.jsonl --out data/events.jsonl
+python -m sniper.live.analyze data/raw.jsonl                   # what happens to blindly sniped launches?
+python -m sniper.policy.train data/raw.jsonl --out data/model.json   # learn hold/sell on early launches, test on later ones
+python -m sniper.paper compare data/events.jsonl --model data/model.json [--tx-cost 0.001]
+python -m sniper.terminal --replay data/events.jsonl --model data/model.json
+python tools/build_standalone.py --events data/events.jsonl --model data/model.json   # browser build with the real data inside
+```
+
+How the real data works (`sniper/live`): PumpPortal announces each launch (with the exact starting reserves) and Jupiter
+quotes give real executable prices. A pump.fun curve is constant-product with an invariant `k = SOL x tokens`, so a single
+0.1 SOL buy quote pins the exact reserves. A second, larger quote verifies each token follows the standard curve; "mayhem
+mode" launches and any off-curve token are excluded because their prices cannot be reconstructed. Measured on live tokens:
+the one-quote state predicts quotes at every size from 0.01 to 3 SOL to about 0.02%, and the fee is 1.238% per side.
+
+The decision system (`sniper/policy`): path features (momentum, net SOL flow, activity, drawdown...), explainable smart-exit
+rules, a small learned hold/sell model, and a "confirm" entry mode. Every one of them is a hypothesis to be tested on
+launches it has never seen, so training splits strictly by launch time and `compare` reports confidence intervals.
+
+Recorder on a server for days of data: see `deploy/README.md`. Plan and status: `ROADMAP.md`.
+
 ## Suggested workflow
 
 1. **First run on real tokens (do this before anything else).** Scan five or six pump.fun mints with

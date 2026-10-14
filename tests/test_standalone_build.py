@@ -10,10 +10,33 @@ spec.loader.exec_module(build_standalone)
 
 
 class StandaloneBuild(unittest.TestCase):
-    def test_committed_files_are_up_to_date(self):
+    BLOCK = re.compile(r'<script type="application/json" id="sniper-real">.*?</script>\n', re.S)
+
+    def test_committed_files_are_up_to_date_apart_from_the_embedded_data(self):
         full, frag = build_standalone.build()
-        self.assertEqual((ROOT / "dist" / "launch-sniper.html").read_text(), full, "run: python tools/build_standalone.py")
-        self.assertEqual((ROOT / "dist" / "launch-sniper.fragment.html").read_text(), frag, "run: python tools/build_standalone.py")
+        for name, expected in (("launch-sniper.html", full), ("launch-sniper.fragment.html", frag)):
+            committed = self.BLOCK.sub("", (ROOT / "dist" / name).read_text())
+            self.assertEqual(committed, expected, "run: python tools/build_standalone.py [--events ...]")
+
+    def test_hostile_token_names_cannot_break_out_of_the_data_block(self):
+        import json
+        import tempfile
+        from sniper.pump.events import NewToken, write_jsonl
+        evil = "</script><img src=x onerror=alert(1)><script>window.__xss=1</script>\u2028"
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "e.jsonl"
+            write_jsonl(str(path), [NewToken(1, "M", "C", evil, evil, 0.0, 0.0, 30.0, 1.073e9)])
+            full, frag = build_standalone.build(str(path), None, "label </script>")
+        for text in (full, frag):
+            block = self.BLOCK.search(text)
+            self.assertIsNotNone(block)
+            inner = block.group(0)[len('<script type="application/json" id="sniper-real">'):-len("</script>\n")]
+            self.assertNotIn("<", inner)
+            self.assertNotIn(">", inner)
+            self.assertNotIn("\u2028", inner)
+            self.assertEqual(json.loads(inner)["events"][0]["name"], evil)  # still decodes to the exact original text
+            self.assertEqual(text.count('id="sniper-real"'), 1)
+            self.assertNotIn("<img src=x", text)
 
     def test_fragment_has_no_document_wrapper_and_one_title(self):
         _, frag = build_standalone.build()

@@ -47,6 +47,7 @@ button,input,select{font:inherit;color:inherit}
 .ibtn:hover{border-color:color-mix(in srgb,var(--accent) 50%,transparent);color:var(--accent)}
 .notice{padding:9px 14px;border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);border-radius:12px;background:color-mix(in srgb,var(--amber) 8%,transparent);color:var(--amber);font:12px var(--mono);letter-spacing:.04em}
 .notice[hidden]{display:none}
+.notice.real{border-color:color-mix(in srgb,var(--accent) 40%,transparent);background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--accent)}
 
 /* layout */
 .layout{display:grid;grid-template-columns:330px minmax(0,1fr);gap:14px;align-items:start}
@@ -182,6 +183,7 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
       <button data-view="profile"><span data-ic="user"></span>Profile</button>
     </nav>
     <div class="spacer"></div>
+    <select class="inp" id="sourcesel" aria-label="Data source" hidden style="width:auto;max-width:190px;text-overflow:ellipsis"></select>
     <div class="pill" id="modepill"><span class="dot" id="modedot"></span><span id="modetext">CONNECTING</span></div>
     <div class="icons">
       <button class="ibtn" id="b-home" title="Dashboard" aria-label="Dashboard"><span data-ic="home"></span></button>
@@ -191,6 +193,7 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
       <button class="ibtn" id="b-full" title="Fullscreen" aria-label="Fullscreen"><span data-ic="full"></span></button>
     </div>
   </header>
+  <div class="notice real" id="realnote" hidden>REAL RECORDED DATA, REPLAYED: the launches and prices are real. The trades are simulated. The recorder can see how each price moved but not who traded, so the "creator sold" exit cannot fire here, and the first price arrives several seconds after launch.</div>
   <div class="notice" id="simnote" hidden>SIMULATED DATA: this market is made up. Profit and loss here says nothing about real trading or about how accurate the scanner is.</div>
 
   <main class="layout">
@@ -336,6 +339,7 @@ $("reset").onclick = async () => {  // two-step confirm built into the page (bro
   try { await api("/api/reset", {start_sol: start}); bankrollLoaded = false; poll(); } catch (e) { toast(e.message); }
 };
 $("range").onchange = () => poll();
+$("sourcesel").onchange = async () => { try { await api("/api/source", {id: $("sourcesel").value}); bankrollLoaded = false; poll(); } catch (e) { toast(e.message); } };
 
 /* quick fields in the left panel apply live; the full configuration screen is staged until Save */
 const QUICK = ["amount_min", "amount_max", "take_profit", "stop_loss"];
@@ -571,7 +575,11 @@ function render(s) {
   $("modedot").className = "dot " + (err ? "bad" : s.feed_status === "live" ? "ok" : "warn");
   const tag = s.simulated ? "DEMO" : s.source.startsWith("live") ? "LIVE" : "REPLAY";
   $("modetext").textContent = ""; const b = el("b", "", tag); $("modetext").append(b, document.createTextNode(" · " + (s.simulated ? "SIMULATED DATA" : s.source.replace(/^(live|replay) ?/, "") || "PAPER") + (s.feed_status === "finished" ? " · FINISHED" : err ? " · ERROR" : "")));
-  $("simnote").hidden = !s.simulated;
+  const isReplay = !s.simulated && s.source.startsWith("replay");
+  $("simnote").hidden = !s.simulated; $("realnote").hidden = !isReplay;
+  const sel = $("sourcesel"); sel.hidden = !(s.sources && s.sources.length > 1);
+  if (!sel.hidden && sel.dataset.built !== "1") { s.sources.forEach(o => { const opt = el("option", "", o.label); opt.value = o.id; sel.append(opt); }); sel.dataset.built = "1"; }
+  if (!sel.hidden && document.activeElement !== sel) sel.value = s.source_id;
   $("emptytext").textContent = err ? s.feed_status : s.simulated ? "Waiting for tokens from the demo market" : s.source.startsWith("live") ? "Waiting for new tokens from Pump.fun to start trading" : "Waiting for the replay to begin";
   $("walletline").textContent = `${fmt(s.paper.equity)} SOL · ${s.paper.open} open`;
 

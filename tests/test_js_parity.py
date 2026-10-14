@@ -12,6 +12,7 @@ from pathlib import Path
 from sniper.policy.features import FEATURES
 from sniper.policy.model import HoldModel, Logistic, ModelExit
 from sniper.pump import synth
+from sniper.pump.events import to_wire
 from sniper.terminal.state import PRESETS, TerminalState, default_strategy, parse_settings, settings_dict
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -62,10 +63,7 @@ def feature_cases(n=220, seed=5):
     return cases[:n]
 
 
-def wire(ev):
-    d = dataclasses.asdict(ev)
-    d["type"] = {"NewToken": "new_token", "Trade": "trade", "ScanNote": "scan"}[type(ev).__name__]
-    return d
+wire = to_wire
 
 
 def settings_cases():

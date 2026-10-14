@@ -56,10 +56,15 @@ _BY_NAME = {"new_token": NewToken, "trade": Trade, "scan": ScanNote}
 _BY_TYPE = {cls: name for name, cls in _BY_NAME.items()}
 
 
-def encode(ev: Event) -> str:
+def to_wire(ev: Event) -> dict:
+    """The dict form used in JSONL files and by the browser build."""
     d = asdict(ev)
     d["type"] = _BY_TYPE[type(ev)]
-    return json.dumps(d, separators=(",", ":"))
+    return d
+
+
+def encode(ev: Event) -> str:
+    return json.dumps(to_wire(ev), separators=(",", ":"))
 
 
 def decode(line: str) -> Event:

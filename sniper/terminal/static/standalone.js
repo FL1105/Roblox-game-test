@@ -433,6 +433,7 @@ class TerminalState {
     this.start_sol = opts.start_sol === undefined ? 1 : opts.start_sol;
     this.strategy = strategy || defaultStrategy();
     this.model_policy = opts.model ? new ModelExit(opts.model) : null;
+    this.sources = opts.sources || []; this.source_id = opts.source_id || null; this.note = opts.note || null;
     this.running = false; this.feed_status = "starting"; this._logSize = opts.log_size || 500;
     this.nowMs = opts.now || (() => Date.now());
     this._resetLocked();
@@ -494,7 +495,7 @@ class TerminalState {
     return {
       running: this.running, source: this.source, simulated: this.simulated, feed_status: this.feed_status, clock: this.clock, events_seen: this.events_seen,
       paper: { start: this.start_sol, equity: e.cash + invested, cash: e.cash, open: e.positions.size },
-      settings: settingsDict(this.strategy), presets: PRESETS, has_model: !!this.model_policy,
+      settings: settingsDict(this.strategy), presets: PRESETS, has_model: !!this.model_policy, sources: this.sources, source_id: this.source_id,
       stats: { window: win, trades: closed.length, wins: wins.length, win_rate: closed.length ? wins.length / closed.length * 100 : 0, pnl_sol: closed.reduce((a, c) => a + c.pnl_sol, 0) },
       counters: { launches: e.launch.size, scanned: e.scans.size, skipped: Object.assign({}, e.skipped) },
       rows: entries.map(([m, t]) => this._row(m, t)), logs: this.logs.slice(0, 200), log_total: this.log_total,
@@ -598,30 +599,67 @@ class DemoFeed {
   }
 }
 
+/* ---------------- replay of a recorded (real) event stream, paced by a timer ---------------- */
+class ReplayFeed {
+  constructor(state, events, opts) {
+    opts = opts || {};
+    this.state = state; this.events = events.slice().sort((a, b) => a.t - b.t); this.speed = opts.speed || 20; this.maxGapMs = 1000;
+    this.i = 0; this.target = this.events.length ? this.events[0].t : 0; this.done = false;
+  }
+  tick(realMs) {
+    if (this.done) return;
+    this.target += realMs * this.speed;
+    const next = this.events[this.i];
+    if (next && next.t - this.target > this.maxGapMs * this.speed) this.target = next.t - this.maxGapMs * this.speed;  // cap idle gaps at 1 s of real time
+    while (this.i < this.events.length && this.events[this.i].t <= this.target) this.state.emit(this.events[this.i++]);
+    if (this.i >= this.events.length) { this.done = true; this.state.setFeedStatus("finished"); }
+  }
+}
+
 /* ---------------- fake /api so the same page runs with no server ---------------- */
-function makeApi(state) {
+function makeApi(app) {
   const json = (code, body) => new Response(JSON.stringify(body), { status: code, headers: { "Content-Type": "application/json" } });
   return async function (url, opts) {
     const u = new URL(url, "http://local"), path = u.pathname, method = ((opts && opts.method) || "GET").toUpperCase();
+    const state = app.state;
     if (method === "GET" && path === "/api/state") return json(200, state.snapshot(u.searchParams.get("range") === "all" ? "all" : "24h"));
     if (method !== "POST") return json(404, { error: "not found" });
     let data; try { data = JSON.parse((opts && opts.body) || "{}"); if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error(); } catch (e) { return json(400, { error: "body must be a JSON object" }); }
     try {
       if (path === "/api/bot") { if (typeof data.running !== "boolean") throw new Error("running must be true or false"); state.setRunning(data.running); return json(200, { running: state.running }); }
       if (path === "/api/settings") return json(200, { settings: state.updateSettings(data) });
+      if (path === "/api/source") { app.switchSource(data.id); return json(200, { source_id: app.state.source_id }); }
       if (path === "/api/reset") { state.reset(has(data, "start_sol") ? data.start_sol : undefined); return json(200, { ok: true, start_sol: state.start_sol }); }
     } catch (e) { return json(400, { error: e.message }); }
     return json(404, { error: "not found" });
   };
 }
 
-const api = { PaperEngine, TerminalState, ModelExit, pathFeatures, tapeFromLaunch, TokenTape, smartDecide, parseSettings, settingsDict, defaultStrategy, defaultStrategyFields, PRESETS, generateDemo, DemoFeed, makeApi, quoteBuy, quoteSell, Sim };
+const api = { ReplayFeed, PaperEngine, TerminalState, ModelExit, pathFeatures, tapeFromLaunch, TokenTape, smartDecide, parseSettings, settingsDict, defaultStrategy, defaultStrategyFields, PRESETS, generateDemo, DemoFeed, makeApi, quoteBuy, quoteSell, Sim };
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 if (typeof window !== "undefined" && root === window) {
-  const state = new TerminalState(defaultStrategy(), { source: "demo", simulated: true });
-  const feed = new DemoFeed(state), localApi = makeApi(state), realFetch = window.fetch.bind(window);
+  let real = null;
+  try { const node = document.getElementById("sniper-real"); if (node) real = JSON.parse(node.textContent); } catch (e) { real = null; }
+  const sources = real ? [{ id: "real", label: real.label }, { id: "demo", label: "Simulated market (made up)" }] : [];
+  const app = {
+    state: null, feed: null,
+    switchSource(id) {
+      if (id !== "real" && id !== "demo") throw new Error("unknown data source");
+      if (id === "real" && !real) throw new Error("no recorded data is embedded in this page");
+      const prev = this.state;
+      const st = new TerminalState(prev ? prev.strategy : defaultStrategy(), {
+        source: id === "real" ? "replay " + real.label : "demo", simulated: id !== "real", start_sol: prev ? prev.start_sol : 1,
+        model: real ? real.model : null, sources, source_id: id,
+      });
+      if (prev && prev.running) st.setRunning(true);
+      this.state = st;
+      this.feed = id === "real" ? new ReplayFeed(st, real.events) : new DemoFeed(st);
+    },
+  };
+  app.switchSource(real ? "real" : "demo");
+  const localApi = makeApi(app), realFetch = window.fetch.bind(window);
   window.fetch = (url, opts) => (typeof url === "string" && url.startsWith("/api/")) ? localApi(url, opts) : realFetch(url, opts);
-  setInterval(() => feed.tick(100), 100);
-  window.__sniperLocal = { state, feed };
+  setInterval(() => app.feed.tick(100), 100);
+  window.__sniperLocal = app;
 }
 })(typeof window !== "undefined" ? window : globalThis);
