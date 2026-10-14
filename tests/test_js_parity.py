@@ -75,6 +75,8 @@ def settings_cases():
         {"stop_loss": 99, "take_profit": 1000, "max_hold_s": 3600}, {"max_entry_mcap_sol": 1, "max_dev_buy_pct": 0},
         {"exit_mode": "smart"}, {"entry_mode": "confirm", "confirm_gain_pct": 25, "confirm_min_flow_sol": 0.4, "confirm_window_s": 90},
         {"confirm_gain_pct": 0, "confirm_window_s": 5, "confirm_min_flow_sol": 100},
+        {"min_trades": 3, "max_token_age_s": 30, "max_entry_gain_pct": 25, "max_creator_launches": 2, "block_collapsed_creators": True},
+        {"min_trades": 0, "max_token_age_s": 5, "max_entry_gain_pct": 0, "max_creator_launches": 0},
     ]
     bad = [
         {"amount_min": 1, "amount_max": 0.5}, {"stop_loss": 100}, {"stop_loss": 0}, {"take_profit": True}, {"take_profit": "30"},
@@ -84,6 +86,7 @@ def settings_cases():
         {"min_liquidity_sol": -1}, {"blacklist": ["nope"]}, {"blacklist": "x"}, {"blacklist": [1]}, {"blacklist": [WALLET] * 201},
         {"amount_min": 0}, {"amount_max": 101}, {"fee_bps": 1001}, {"max_hold_s": 5}, {"max_entry_mcap_sol": 0.5},
         {"exit_mode": "model"}, {"exit_mode": "magic"}, {"entry_mode": "yolo"}, {"confirm_gain_pct": 501}, {"confirm_window_s": 4}, {"confirm_min_flow_sol": -1},
+        {"min_trades": -1}, {"min_trades": 1001}, {"max_token_age_s": 4}, {"max_entry_gain_pct": -1}, {"max_creator_launches": 1001}, {"block_collapsed_creators": "yes"},
     ]
     out = []
     for has_model in (False, True):
@@ -159,6 +162,33 @@ def handcrafted():
                 [x.create(), x.buy(T0 + 500, 3.0), x.scan(T0 + 30_000), x.buy(T0 + 35_000, 0.01)]))
     out.append(("confirm-plus-smart", {**quick, "entry_mode": "confirm", "confirm_gain_pct": 5, "exit_mode": "smart"}, pump_fade("M1", T0)))
     out.append(("model-exit-on-fade", {**quick, "exit_mode": "model"}, pump_fade("M1", T0), True))
+
+    # ---- entry filters ----
+    def tok(mint, creator, t0, moves=(), scan_at=100):
+        x = sim(mint, creator, t0)
+        ev = [x.create()]
+        for dt, sol in moves:
+            ev.append(x.buy(t0 + dt, sol) if sol > 0 else x.sell(t0 + dt, -sol, "O"))
+        return ev + [x.scan(t0 + scan_at), x.buy(t0 + scan_at + 5_000, 0.01)]
+
+    out.append(("filter-min-trades", {**quick, "min_trades": 2}, tok("A", "C1", T0) + tok("B", "C2", T0 + 100_000, [(10, 0.2), (20, 0.2)])))
+    out.append(("filter-min-trades-boundary", {**quick, "min_trades": 2}, tok("A", "C1", T0, [(10, 0.2)]) + tok("B", "C2", T0 + 100_000, [(10, 0.2), (20, 0.2)])))
+    out.append(("filter-serial-24h-window", {**quick, "max_creator_launches": 0}, tok("OLD", "C1", T0) + tok("NEW", "C1", T0 + 2 * 86_400_000) + tok("NEWER", "C1", T0 + 2 * 86_400_000 + 60_000)))
+    out.append(("filter-serial-later-launch-ignored", {**quick, "max_creator_launches": 0}, tok("A", "C1", T0, scan_at=30_000) + tok("B", "C1", T0 + 10_000, scan_at=30_000)))
+    out.append(("filter-token-age", {**quick, "max_token_age_s": 10}, tok("A", "C1", T0, scan_at=30_000) + tok("B", "C2", T0 + 100_000, scan_at=5_000)))
+    out.append(("filter-no-chasing", {**quick, "max_entry_gain_pct": 20}, tok("A", "C1", T0, [(10, 8.0)]) + tok("B", "C2", T0 + 100_000)))
+    serial = []
+    for i in range(5):
+        serial += tok(f"S{i}", "SERIAL", T0 + i * 60_000, [(10, 0.2)])
+    out.append(("filter-serial-creator", {**quick, "max_creator_launches": 2}, serial + tok("OTHER", "FRESH", T0 + 400_000)))
+    x = sim("P1", "CC", T0)
+    prior = [x.create(), x.scan(T0 + 100), x.buy(T0 + 10, 8.0), x.sell(T0 + 30_000, 2.2e8, "O")]
+    out.append(("filter-collapsed-creator", {**quick, "block_collapsed_creators": True}, prior + tok("NEXT", "CC", T0 + 200_000)))
+    x = sim("P2", "KEEP", T0)
+    kept = [x.create(), x.scan(T0 + 100), x.buy(T0 + 10, 8.0)]
+    out.append(("filter-creator-kept-its-gain", {**quick, "block_collapsed_creators": True}, kept + tok("NEXT2", "KEEP", T0 + 200_000)))
+    out.append(("filters-with-confirm", {**quick, "entry_mode": "confirm", "confirm_gain_pct": 10, "max_entry_gain_pct": 30}, tok("A", "C1", T0, [(10, 2.0), (20, 6.0)])))
+    out.append(("market-all-filters", {"min_trades": 0, "max_token_age_s": 120, "max_entry_gain_pct": 400, "max_creator_launches": 6, "block_collapsed_creators": True, "max_dev_buy_pct": 20, "latency_ms": 300}, None))
     x = sim()
     out.append(("smart-high-target-keeps-running", {**quick, "exit_mode": "smart", "take_profit": 200},
                 [x.create(), x.scan(T0 + 100), x.buy(T0 + 200, 0.2), x.buy(T0 + 300, 25.0), x.buy(T0 + 400, 0.5), x.sell(T0 + 12_000, 3.0e7, "O"), x.buy(T0 + 12_500, 0.01)]))
@@ -186,7 +216,7 @@ def run_cases():
         ("market-confirm-smart", {"entry_mode": "confirm", "confirm_gain_pct": 5, "exit_mode": "smart", "latency_ms": 300}, 5.0, market),
         ("market-model-exit", {"exit_mode": "model", "latency_ms": 500}, 5.0, market, True),
         ("market-model-confirm", {"exit_mode": "model", "entry_mode": "confirm", "confirm_gain_pct": 5}, 5.0, market, True),
-    ] + [(entry[0], entry[1], 100.0, entry[2], *entry[3:]) for entry in handcrafted()]
+    ] + [(entry[0], entry[1], 100.0, market if entry[2] is None else entry[2], *entry[3:]) for entry in handcrafted()]
     runs = []
     model = fixed_model()
     for name, payload, bankroll, events, *with_model in scenarios:
@@ -228,7 +258,8 @@ class JsParity(unittest.TestCase):
         self.assertGreaterEqual(reasons, {"take_profit", "stop_loss", "timeout", "trailing_stop", "creator_sold", "graduated"})
         self.assertGreaterEqual(reasons, {"profit_stall", "smart_trail", "stalled", "model_sell"}, reasons)
         self.assertGreaterEqual(skips, {"max_open", "slippage", "low_liquidity", "blacklisted", "no_cash", "verdict", "no_confirmation"})
-        quiet_by_design = ("slippage-abort", "low-liquidity", "rugger-then-relaunch", "creator-sells-60-percent", "confirm-watch-expires", "confirm-needs-current-flow")
+        self.assertGreaterEqual(skips, {"too_few_trades", "too_old", "chasing", "serial_creator", "collapsed_creator"}, skips)
+        quiet_by_design = ("slippage-abort", "low-liquidity", "rugger-then-relaunch", "creator-sells-60-percent", "confirm-watch-expires", "confirm-needs-current-flow", "filters-with-confirm", "filter-min-trades", "filter-min-trades-boundary", "filter-serial-later-launch-ignored", "filter-token-age", "filter-no-chasing", "filter-collapsed-creator")
         silent = [r["name"] for r in runs if r["snapshots"]["all"]["stats"]["trades"] + r["snapshots"]["all"]["paper"]["open"] == 0 and r["name"] not in quiet_by_design]
         self.assertEqual(silent, [], "scenarios that never traded prove nothing")
 

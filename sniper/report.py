@@ -16,6 +16,7 @@ import time
 from .live.analyze import report as describe
 from .live.convert import read_raw, to_events, token_paths
 from .paper.compare import ablation_table, compare
+from .paper.filters import lab
 from .policy.model import HoldModel
 from .policy.train import split_tokens, train
 from .pump.events import Event
@@ -55,6 +56,7 @@ def build(raw_paths: list[str], test_frac: float = 0.3, model_out: str | None = 
     for cost in COSTS:
         out += [f"### transaction cost {cost} SOL per side", "```", compare(ev_test, model, tx_cost_sol=cost), "```", ""]
     out += ["## Which smart-exit rules matter? (unseen launches, no transaction cost)", "```", ablation_table(ev_test, 0.0), "```", ""]
+    out += ["## Entry parameters: do any of them help? (settings picked on earlier launches, confirmed on unseen ones, no transaction cost)", "```", lab(ev_train, ev_test, 0.0), "```", ""]
     out += ["## For reference: the same strategies on the EARLIER launches (the model was fitted here, so this flatters it)", "```", compare(ev_train, model, tx_cost_sol=0.0), "```", ""]
     out += ["## How to read this", "- `mean ret` is the average net return per trade after fees and costs; the 95% interval is a bootstrap and needs 20+ trades to appear.",
             "- A strategy only counts if its interval on UNSEEN launches sits above zero, at a cost level you can actually achieve.",

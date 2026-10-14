@@ -154,3 +154,75 @@ class Report(unittest.TestCase):
             f.write(json.dumps({"k": "create", "t": c["t"], "mint": c["mint"], "creator": "C", "symbol": "S", "name": "N", "dev_tokens": 0.0, "dev_sol": 0.0, "v_sol": c["v_sol"], "v_tokens": c["v_tokens"]}) + "\n")
         f.close()
         self.assertIn("not enough launches", build([f.name]))
+
+
+class FilterLab(unittest.TestCase):
+    def events(self, n=120, seed=3):
+        from sniper.live.convert import to_events
+        rows = []
+        for p in synthetic_paths(n, seed).values():
+            c = p["create"]
+            rows.append({"k": "create", "t": c["t"], "mint": c["mint"], "creator": f"C{c['mint']}", "symbol": "S", "name": "N", "dev_tokens": 0.0, "dev_sol": 0.0, "v_sol": c["v_sol"], "v_tokens": c["v_tokens"]})
+            for j, o in enumerate(p["obs"]):
+                rows.append({"k": "obs", "t": o["t"], "mint": c["mint"], "v_sol": o["v_sol"], "v_tokens": o["v_tokens"]})
+                if j == 0:
+                    rows.append({"k": "chk", "t": o["t"] + 100, "mint": c["mint"], "rt_in_sol": 0.1, "rt_back_sol": 0.0969})
+            rows.append({"k": "end", "t": p["end"]["t"], "mint": c["mint"], "reason": "idle"})
+        return to_events(rows)
+
+    def test_lab_lists_every_candidate_and_judges_the_selection_on_unseen_launches(self):
+        from sniper.paper.compare import split_by_launch
+        from sniper.paper.filters import candidates, lab
+        tr, te = split_by_launch(self.events(), 0.7)
+        text = lab(tr, te, 0.0)
+        for name in candidates(replace_base()):
+            self.assertIn(name, text)
+        self.assertIn("Selected on the earlier launches", text)
+        self.assertIn("UNSEEN launches", text)
+        self.assertIn("settings were tried", text)
+
+    def test_candidates_each_change_a_single_thing_except_the_labelled_combos(self):
+        from sniper.paper.filters import candidates
+        base = replace_base()
+        for name, s in candidates(base).items():
+            if name.startswith("combo") or name.startswith("baseline"):
+                continue
+            changed = [f for f in s.__dataclass_fields__ if getattr(s, f) != getattr(base, f)]
+            self.assertLessEqual(len(changed), 2, (name, changed))  # a filter and, for confirm entry, its mode
+
+    def test_a_planted_signal_is_found_and_holds_up_on_unseen_launches(self):
+        from sniper.paper.compare import split_by_launch
+        from sniper.paper.filters import lab
+        tr, te = split_by_launch(self.events(200, 9), 0.7)
+        text = lab(tr, te, 0.0)
+        mean = lambda l: float(l.split("|")[2].split("%")[0].split()[-1])
+        confirm = [l for l in text.splitlines() if l.startswith("confirm entry: up 15%")][0]
+        base = [l for l in text.splitlines() if l.startswith("baseline")][0]
+        self.assertGreater(mean(confirm), mean(base))  # runners keep getting bought, so waiting for buyers picks them out
+        self.assertIn("confirm entry", text.split("Selected on the earlier launches")[1].splitlines()[0])
+        self.assertIn("HOLDS UP", text)
+
+    def test_no_signal_means_no_claim(self):
+        """Negative control: when every token is the same dull kind, the lab must not announce a winner."""
+        from sniper.live.convert import to_events
+        from sniper.paper.compare import split_by_launch
+        from sniper.paper.filters import lab
+        rows = []
+        for i in range(150):
+            p = make_path(i, "flat", 1_000_000 + i * 200_000)
+            c = p["create"]
+            rows.append({"k": "create", "t": c["t"], "mint": c["mint"], "creator": f"C{i}", "symbol": "S", "name": "N", "dev_tokens": 0.0, "dev_sol": 0.0, "v_sol": c["v_sol"], "v_tokens": c["v_tokens"]})
+            for j, o in enumerate(p["obs"]):
+                rows.append({"k": "obs", "t": o["t"], "mint": c["mint"], "v_sol": o["v_sol"], "v_tokens": o["v_tokens"]})
+                if j == 0:
+                    rows.append({"k": "chk", "t": o["t"] + 100, "mint": c["mint"], "rt_in_sol": 0.1, "rt_back_sol": 0.0969})
+            rows.append({"k": "end", "t": p["end"]["t"], "mint": c["mint"], "reason": "idle"})
+        tr, te = split_by_launch(to_events(rows), 0.7)
+        text = lab(tr, te, 0.0)
+        self.assertNotIn("HOLDS UP", text)
+
+
+def replace_base():
+    from dataclasses import replace
+    from sniper.paper.compare import base_strategy
+    return replace(base_strategy(0.0), exit_mode="smart")

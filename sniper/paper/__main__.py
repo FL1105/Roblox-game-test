@@ -2,6 +2,7 @@
     python -m sniper.paper replay events.jsonl [strategy options]
     python -m sniper.paper sweep  events.jsonl [strategy options]
     python -m sniper.paper compare events.jsonl [--model model.json] [--tx-cost X]
+    python -m sniper.paper filters events.jsonl [--tx-cost X]     # which entry parameters help?
 """
 
 from __future__ import annotations
@@ -76,7 +77,7 @@ def cmd_sweep(events: list[Event], s: Strategy, start_sol: float, train_frac: fl
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="sniper.paper", description="Paper-trade recorded pump.fun events")
-    p.add_argument("command", choices=["replay", "sweep", "compare"])
+    p.add_argument("command", choices=["replay", "sweep", "compare", "filters"])
     p.add_argument("events", help="JSONL file written by sniper.listener")
     d = Strategy()
     p.add_argument("--tp", type=float, default=d.take_profit_pct, help="take profit %% (net of costs)")
@@ -112,6 +113,12 @@ def main(argv: list[str] | None = None) -> int:
         print("error: no launches in that file", file=sys.stderr)
         return 2
 
+    if a.command == "filters":
+        from .compare import split_by_launch
+        from .filters import lab
+        ev_train, ev_test = split_by_launch(events, 0.7)
+        print(lab(ev_train, ev_test, a.tx_cost, a.latency_ms))
+        return 0
     if a.command == "compare":
         from ..policy.model import HoldModel
         from .compare import compare

@@ -134,6 +134,7 @@ function defaultStrategyFields() {
     allowed_verdicts: ["PASS", "CAUTION"], max_dev_buy_pct: 15, max_entry_mcap_sol: 60, slippage_pct: 10,
     trailing_stop_pct: 0, min_liquidity_sol: 0, size_mode: "verdict", auto_compound: false, use_blacklist: true, blacklist: [],
     exit_mode: "targets", smart: null, entry_mode: "snipe", confirm_gain_pct: 10, confirm_min_flow_sol: 0, confirm_window_s: 60,
+    min_trades: 0, max_token_age_s: 3600, max_entry_gain_pct: 100000, max_creator_launches: 1000, block_collapsed_creators: false,
   };
 }
 const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -142,7 +143,7 @@ class PaperEngine {
   constructor(strategy, startSol, onNote, modelPolicy) {
     this.s = strategy;
     this.model_policy = modelPolicy || null;
-    this.tapes = new Map(); this.watch = new Map();
+    this.tapes = new Map(); this.watch = new Map(); this.creator_launches = new Map();
     this.enabled = true;
     this.onNote = onNote || null;
     this.start_sol = startSol === undefined ? 1 : startSol;
@@ -168,6 +169,8 @@ class PaperEngine {
     if (ev.type === "new_token") {
       this.launch.set(ev.mint, ev);
       this.tapes.set(ev.mint, tapeFromLaunch(ev));
+      if (!this.creator_launches.has(ev.creator)) this.creator_launches.set(ev.creator, []);
+      this.creator_launches.get(ev.creator).push([ev.t, ev.mint]);
       this.curve.set(ev.mint, { v_sol: ev.v_sol, v_tokens: ev.v_tokens });
       if (!this.s.require_scan) this._considerEntry(ev.mint, ev.t);
     } else if (ev.type === "scan") {
@@ -215,11 +218,30 @@ class PaperEngine {
     const launch = this.launch.get(mint), state = this.curve.get(mint), s = this.s;
     if (!this.enabled) this._skip(decisionT, mint, "bot_stopped");
     else if (s.use_blacklist && (s.blacklist.includes(launch.creator) || this.known_ruggers.has(launch.creator))) this._skip(decisionT, mint, "blacklisted");
+    else if (this._creatorProblem(launch) !== null) this._skip(decisionT, mint, this._creatorProblem(launch));
+    else if (decisionT - launch.t > s.max_token_age_s * 1000) this._skip(decisionT, mint, "too_old");
+    else if (this.tapes.get(mint).ts.length - 1 < s.min_trades) this._skip(decisionT, mint, "too_few_trades");
+    else if ((state.v_sol / state.v_tokens / this.tapes.get(mint).launch_price - 1) * 100 > s.max_entry_gain_pct) this._skip(decisionT, mint, "chasing");
     else if (launch.dev_tokens / TOTAL_SUPPLY * 100 > s.max_dev_buy_pct) this._skip(decisionT, mint, "dev_buy");
     else if (state.v_sol - VIRTUAL_START_SOL < s.min_liquidity_sol) this._skip(decisionT, mint, "low_liquidity");
     else if (mcapOf(state) > s.max_entry_mcap_sol) this._skip(decisionT, mint, "mcap_too_high");
     else if (this.positions.size + this.pending.size >= s.max_open) this._skip(decisionT, mint, "max_open");
     else { this.pending.set(mint, decisionT + s.latency_ms); this.pending_state.set(mint, state); }
+  }
+
+  _creatorProblem(launch) {
+    const earlier = (this.creator_launches.get(launch.creator) || []).filter(([t, m]) => t < launch.t && m !== launch.mint);
+    if (earlier.filter(([t]) => t >= launch.t - 86400000).length > this.s.max_creator_launches) return "serial_creator";
+    if (this.s.block_collapsed_creators) {
+      for (const [, m] of earlier) {
+        const tape = this.tapes.get(m);
+        if (tape) {
+          const peakGain = tape.peak_price / tape.launch_price - 1, nowGain = tape.price(tape.ts.length - 1) / tape.launch_price - 1;
+          if (peakGain >= 0.5 && nowGain <= 0.3 * peakGain) return "collapsed_creator";
+        }
+      }
+    }
+    return null;
   }
 
   _size(mint, equity) {
@@ -351,6 +373,7 @@ function settingsDict(s) {
     honeypot_detection: s.require_scan, exit_on_creator_sell: s.exit_on_creator_sell, latency_ms: s.latency_ms, max_hold_s: s.max_hold_s,
     verdicts: [...s.allowed_verdicts].sort(), fee_bps: s.fee_bps, tx_cost_sol: s.tx_cost_sol,
     exit_mode: s.exit_mode, entry_mode: s.entry_mode, confirm_gain_pct: s.confirm_gain_pct, confirm_min_flow_sol: s.confirm_min_flow_sol, confirm_window_s: s.confirm_window_s,
+    min_trades: s.min_trades, max_token_age_s: s.max_token_age_s, max_entry_gain_pct: s.max_entry_gain_pct, max_creator_launches: s.max_creator_launches, block_collapsed_creators: s.block_collapsed_creators,
   };
 }
 
@@ -373,7 +396,7 @@ function parseSettings(data, current, hasModel) {
   if (!Array.isArray(verdicts) || !verdicts.length || verdicts.some((v) => !ALLOWED_VERDICTS.includes(v)))
     throw new Error("verdicts must be a non-empty list drawn from ['PASS', 'CAUTION', 'AVOID']");
   const flags = {};
-  for (const [key, label] of [["exit_on_creator_sell", "Rug-pull protection"], ["auto_compound", "Auto-compound"], ["use_blacklist", "Wallet blacklist"], ["honeypot_detection", "Honeypot detection"]]) {
+  for (const [key, label] of [["exit_on_creator_sell", "Rug-pull protection"], ["auto_compound", "Auto-compound"], ["use_blacklist", "Wallet blacklist"], ["honeypot_detection", "Honeypot detection"], ["block_collapsed_creators", "Block collapsed creators"]]) {
     flags[key] = has(data, key) ? data[key] : cur[key];
     if (typeof flags[key] !== "boolean") throw new Error(`${label} must be true or false`);
   }
@@ -409,6 +432,11 @@ function parseSettings(data, current, hasModel) {
   out.confirm_gain_pct = num(data, "confirm_gain_pct", "Confirmation gain", 0, 500, cur.confirm_gain_pct);
   out.confirm_min_flow_sol = num(data, "confirm_min_flow_sol", "Confirmation buying", 0, 100, cur.confirm_min_flow_sol);
   out.confirm_window_s = num(data, "confirm_window_s", "Confirmation window", 5, 600, cur.confirm_window_s);
+  out.min_trades = Math.trunc(num(data, "min_trades", "Min trades seen", 0, 1000, cur.min_trades));
+  out.max_token_age_s = num(data, "max_token_age_s", "Max token age", 5, 3600, cur.max_token_age_s);
+  out.max_entry_gain_pct = num(data, "max_entry_gain_pct", "Max gain already", 0, 100000, cur.max_entry_gain_pct);
+  out.max_creator_launches = Math.trunc(num(data, "max_creator_launches", "Max creator launches", 0, 1000, cur.max_creator_launches));
+  out.block_collapsed_creators = flags.block_collapsed_creators;
   return out;
 }
 

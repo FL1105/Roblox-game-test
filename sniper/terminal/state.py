@@ -50,6 +50,11 @@ def settings_dict(s: Strategy) -> dict:
         "confirm_gain_pct": s.confirm_gain_pct,
         "confirm_min_flow_sol": s.confirm_min_flow_sol,
         "confirm_window_s": s.confirm_window_s,
+        "min_trades": s.min_trades,
+        "max_token_age_s": s.max_token_age_s,
+        "max_entry_gain_pct": s.max_entry_gain_pct,
+        "max_creator_launches": s.max_creator_launches,
+        "block_collapsed_creators": s.block_collapsed_creators,
     }
 
 
@@ -86,7 +91,8 @@ def parse_settings(data: dict, current: Strategy, has_model: bool = False) -> St
         raise ValueError(f"verdicts must be a non-empty list drawn from {list(ALLOWED_VERDICTS)}")
     flags = {}
     for key, label in (("exit_on_creator_sell", "Rug-pull protection"), ("auto_compound", "Auto-compound"),
-                       ("use_blacklist", "Wallet blacklist"), ("honeypot_detection", "Honeypot detection")):
+                       ("use_blacklist", "Wallet blacklist"), ("honeypot_detection", "Honeypot detection"),
+                       ("block_collapsed_creators", "Block collapsed creators")):
         flags[key] = data.get(key, cur[key])
         if not isinstance(flags[key], bool):
             raise ValueError(f"{label} must be true or false")
@@ -133,6 +139,11 @@ def parse_settings(data: dict, current: Strategy, has_model: bool = False) -> St
         confirm_gain_pct=_num(data, "confirm_gain_pct", "Confirmation gain", 0, 500, cur["confirm_gain_pct"]),
         confirm_min_flow_sol=_num(data, "confirm_min_flow_sol", "Confirmation buying", 0, 100, cur["confirm_min_flow_sol"]),
         confirm_window_s=_num(data, "confirm_window_s", "Confirmation window", 5, 600, cur["confirm_window_s"]),
+        min_trades=int(_num(data, "min_trades", "Min trades seen", 0, 1000, cur["min_trades"])),
+        max_token_age_s=_num(data, "max_token_age_s", "Max token age", 5, 3600, cur["max_token_age_s"]),
+        max_entry_gain_pct=_num(data, "max_entry_gain_pct", "Max gain already", 0, 100000, cur["max_entry_gain_pct"]),
+        max_creator_launches=int(_num(data, "max_creator_launches", "Max creator launches", 0, 1000, cur["max_creator_launches"])),
+        block_collapsed_creators=flags["block_collapsed_creators"],
     )
 
 

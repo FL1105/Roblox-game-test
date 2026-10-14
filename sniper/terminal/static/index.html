@@ -378,6 +378,11 @@ const TABS = {
     {k: "trailing_stop_pct", t: "num", l: "Trailing Stop (%)", h: "Once in profit, sell after this % drop from the best price. 0 = off."},
     {k: "size_mode", t: "sel", opts: MODES, l: "Position Size Mode", h: "How the bot picks a size between the minimum and maximum."},
     {k: "auto_compound", t: "tog", l: "Auto-compound", h: "Scale position sizes with your paper bankroll: grow after wins, shrink after losses."},
+    {k: "min_trades", t: "num", l: "Min Trades Seen", h: "Skip tokens nobody has traded yet: at least this many price moves since launch. 0 = off."},
+    {k: "max_token_age_s", t: "num", l: "Max Token Age (s)", h: "Skip a token if we would be buying it later than this after launch. 3600 = off."},
+    {k: "max_entry_gain_pct", t: "num", l: "Don't Chase Above (%)", h: "Skip tokens already this far above their launch price. 100000 = off."},
+    {k: "max_creator_launches", t: "num", l: "Max Creator Launches (24h)", h: "Skip creators who launched more than this many tokens in the last 24 h (serial launchers). 1000 = off."},
+    {k: "block_collapsed_creators", t: "tog", l: "Skip creators with a collapsed token", h: "Skip a creator if an earlier token of theirs rose 50%+ and then gave back 70%+ of that gain."},
     {k: "entry_mode", t: "sel", opts: ENTRY, l: "Entry Mode", h: "Snipe buys as soon as a token clears the scan. Confirm waits for proof that real buyers have arrived."},
     {k: "confirm_gain_pct", t: "num", l: "Confirm: Min Gain (%)", h: "Confirm mode: the price must be this far above the launch price."},
     {k: "confirm_min_flow_sol", t: "num", l: "Confirm: Net Buying (SOL)", h: "Confirm mode: at least this much more SOL bought than sold over the last 15 s."},
@@ -521,7 +526,7 @@ function sparkline(host, ys, start) {
 
 /* ---- rows ---- */
 const CLOSED = {profit_stall: ["PROFIT (STALLED)", "g"], smart_trail: ["SMART TRAIL", "g"], stalled: ["STALLED OUT", "a"], sell_pressure: ["SELL PRESSURE", "a"], model_sell: ["MODEL SELL", "a"], trailing_stop: ["TRAILING STOP", "g"], take_profit: ["TAKE PROFIT", "g"], stop_loss: ["STOP LOSS", "r"], creator_sold: ["CREATOR SOLD", "r"], timeout: ["TIMED OUT", "a"], graduated: ["GRADUATED", "g"], end_of_data: ["CLOSED", ""]};
-const SKIPS = {no_confirmation: "NO CONFIRMATION", slippage: "SLIPPAGE", low_liquidity: "LOW LIQUIDITY", blacklisted: "BLACKLISTED", bot_stopped: "BOT STOPPED", dev_buy: "DEV BUY", max_open: "MAX OPEN", mcap_too_high: "TOO LATE", mcap_too_high_at_fill: "TOO LATE", no_cash: "NO CASH"};
+const SKIPS = {serial_creator: "SERIAL CREATOR", collapsed_creator: "CREATOR COLLAPSED", too_old: "TOO OLD", too_few_trades: "NO TRADES YET", chasing: "ALREADY UP", no_confirmation: "NO CONFIRMATION", slippage: "SLIPPAGE", low_liquidity: "LOW LIQUIDITY", blacklisted: "BLACKLISTED", bot_stopped: "BOT STOPPED", dev_buy: "DEV BUY", max_open: "MAX OPEN", mcap_too_high: "TOO LATE", mcap_too_high_at_fill: "TOO LATE", no_cash: "NO CASH"};
 function statusChip(r) {
   switch (r.status) {
     case "holding": return ["HOLDING", "g"];

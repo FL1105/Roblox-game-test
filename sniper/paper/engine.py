@@ -54,6 +54,12 @@ class Strategy:
     confirm_gain_pct: float = 10.0  # confirm: price must be this far above the launch price ...
     confirm_min_flow_sol: float = 0.0  # ... with at least this much net SOL bought over the last 15 s ...
     confirm_window_s: float = 60.0  # ... within this long after the token cleared the scan
+    # Entry filters. The defaults switch each one off.
+    min_trades: int = 0                  # price moves seen since launch before we may buy (a token nobody has touched is skipped)
+    max_token_age_s: float = 3600.0      # skip tokens already older than this when we decide
+    max_entry_gain_pct: float = 100_000.0  # skip tokens already this far above their launch price (don't chase)
+    max_creator_launches: int = 1000     # skip creators with more than this many earlier launches in the last 24 h
+    block_collapsed_creators: bool = False  # skip creators with an earlier token that rose 50%+ then gave back 70%+ of that gain
 
 
 @dataclass
@@ -111,6 +117,7 @@ class PaperEngine:
         self.pending_state: dict[str, CurveState] = {}  # curve at decision time, for the slippage check
         self.rng = random.Random(0)  # seeded so a replay is reproducible
         self.creator_sold: dict[str, float] = {}
+        self.creator_launches: dict[str, list[tuple[int, str]]] = {}  # creator -> [(launch time, mint)]
         self.known_ruggers: set[str] = set()
         self.positions: dict[str, Position] = {}
         self.closed: list[ClosedTrade] = []
@@ -136,6 +143,7 @@ class PaperEngine:
         if isinstance(ev, NewToken):
             self.launch[ev.mint] = ev
             self.tapes[ev.mint] = tape_from_launch(ev)
+            self.creator_launches.setdefault(ev.creator, []).append((ev.t, ev.mint))
             self.curve[ev.mint] = CurveState(ev.v_sol, ev.v_tokens)
             if not self.s.require_scan:
                 self._consider_entry(ev.mint, ev.t)
@@ -198,6 +206,14 @@ class PaperEngine:
             self._skip(decision_t, mint, "bot_stopped")
         elif self.s.use_blacklist and (launch.creator in self.s.blacklist or launch.creator in self.known_ruggers):
             self._skip(decision_t, mint, "blacklisted")
+        elif self._creator_problem(launch) is not None:
+            self._skip(decision_t, mint, self._creator_problem(launch))
+        elif decision_t - launch.t > self.s.max_token_age_s * 1000:
+            self._skip(decision_t, mint, "too_old")
+        elif len(self.tapes[mint].ts) - 1 < self.s.min_trades:
+            self._skip(decision_t, mint, "too_few_trades")
+        elif (state.price / self.tapes[mint].launch_price - 1) * 100 > self.s.max_entry_gain_pct:
+            self._skip(decision_t, mint, "chasing")
         elif launch.dev_tokens / TOTAL_SUPPLY * 100 > self.s.max_dev_buy_pct:
             self._skip(decision_t, mint, "dev_buy")
         elif state.v_sol - VIRTUAL_START_SOL < self.s.min_liquidity_sol:
@@ -209,6 +225,21 @@ class PaperEngine:
         else:
             self.pending[mint] = decision_t + self.s.latency_ms
             self.pending_state[mint] = state
+
+    def _creator_problem(self, launch: NewToken) -> str | None:
+        """Reputation of the creator from launches this engine has already seen, using only prices (no trader identities)."""
+        earlier = [(t, m) for t, m in self.creator_launches.get(launch.creator, []) if t < launch.t and m != launch.mint]
+        if len([1 for t, _ in earlier if t >= launch.t - 86_400_000]) > self.s.max_creator_launches:
+            return "serial_creator"
+        if self.s.block_collapsed_creators:
+            for _, m in earlier:
+                tape = self.tapes.get(m)
+                if tape:  # a curve never trades below its launch price, so measure how much of the GAIN was given back
+                    peak_gain = tape.peak_price / tape.launch_price - 1
+                    now_gain = tape.price(len(tape.ts) - 1) / tape.launch_price - 1
+                    if peak_gain >= 0.5 and now_gain <= 0.3 * peak_gain:
+                        return "collapsed_creator"
+        return None
 
     def _size(self, mint: str, equity: float) -> float:
         s = self.s
