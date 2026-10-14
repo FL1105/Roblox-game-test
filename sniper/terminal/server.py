@@ -76,6 +76,8 @@ def make_server(state: TerminalState, host: str = "127.0.0.1", port: int = 8765)
                     return self._json(200, {"running": state.running})
                 if path == "/api/settings":
                     return self._json(200, {"settings": state.update_settings(data)})
+                if path == "/api/tuner":
+                    return self._json(200, {"tuner": state.configure_tuner(data)})
                 if path == "/api/reset":
                     state.reset(data.get("start_sol"))
                     return self._json(200, {"ok": True, "start_sol": state.start_sol})

@@ -27,7 +27,7 @@ for (const [i, c] of cases.settings.entries()) {
 // 2. whole-terminal runs: settings applied, bot started, events replayed, snapshot compared
 for (const [i, c] of cases.runs.entries()) {
   const st = new js.TerminalState(js.defaultStrategy(), { source: "demo", simulated: true, start_sol: c.start_sol, model: c.model });
-  st.updateSettings(c.payload); st.clock = c.clock0; st.setRunning(true);
+  st.updateSettings(c.payload); st.clock = c.clock0; if (c.tuner) st.configureTuner(c.tuner); st.setRunning(true);
   for (const ev of c.events) st.emit(ev);
   for (const [key, expected] of Object.entries(c.snapshots)) {
     const [win, rows] = key.split("@");  // "all@3" = the all-time window limited to 3 token rows
@@ -43,5 +43,64 @@ for (const [i, c] of cases.features.entries()) {
   same(c.features, feats, `features[${i}]`);
   same(c.scores, new js.ModelExit(cases.model).scores(feats), `scores[${i}]`);
 }
-console.log(bad.length ? bad.slice(0, 25).join("\n") + `\n${bad.length} mismatch(es)` : `ok: ${cases.settings.length} settings cases, ${cases.runs.length} runs, ${cases.features.length} feature/score cases`);
+// 4. repeat laps: the browser build renames and shifts a recording exactly as Python does, and a looping feed really keeps going
+for (const [lap, expected] of Object.entries(cases.laps.laps)) same(expected, js.repeatLap(cases.laps.events, +lap), `lap ${lap}`);
+{
+  const st = new js.TerminalState(js.defaultStrategy(), { source: "replay x", simulated: false, start_sol: 1 });
+  const feed = new js.ReplayFeed(st, cases.laps.events, { loop: true, speed: 50 });
+  let ticks = 0; while (st.lap < 3 && ticks++ < 100000) feed.tick(100);
+  if (st.lap !== 3) bad.push(`looping feed stuck on lap ${st.lap}`);
+  if (st.events_seen < 2 * cases.laps.events.length) bad.push(`looping feed emitted only ${st.events_seen} events`);
+  if (st.feed_status === "finished") bad.push("looping feed reported finished");
+  if (![...st.tokens.keys()].some((m) => m.endsWith("~2"))) bad.push("lap 2 tokens missing");
+  const once = new js.TerminalState(js.defaultStrategy(), { source: "replay x", simulated: false, start_sol: 1 });
+  const feed1 = new js.ReplayFeed(once, cases.laps.events, { speed: 50 });
+  for (let i = 0; i < 100000 && !feed1.done; i++) feed1.tick(100);
+  if (once.feed_status !== "finished" || once.lap !== 1 || once.events_seen !== cases.laps.events.length) bad.push(`one-shot feed: ${once.feed_status} lap ${once.lap} events ${once.events_seen}`);
+}
+// 5. the tuner's pure pieces on awkward inputs
+{
+  const T = cases.tuner;
+  for (const [seed, expected] of Object.entries(T.rng)) { const g = js.mulberry32(+seed); same(expected, expected.map(() => g()), `rng seed ${seed}`); }
+  T.snap.forEach(([x, p, expected], i) => { const got = js.snap(x, p); if (got !== expected) bad.push(`snap[${i}] ${x},${p}: python ${expected} vs js ${got} (must be identical, not just close)`); });
+  T.gate.forEach((c, i) => same(c.expected, js.pairedGate(c.diffs, c.alpha, js.mulberry32(c.seed)).map((r) => r.slice()), `gate[${i}]`));
+  const strat = (fields) => Object.assign(js.defaultStrategy(), fields, fields.ladder ? { ladder: fields.ladder } : {});
+  T.blend.forEach((c, i) => {
+    const s = strat(c.fields);
+    same(c.expected, js.blendChanges(s, new js.Tuner({ enabled: true, clones: 6, round_launches: 100, caution: "balanced", blend: 0.5, params: js.TUNABLES.map((t) => t.key) }).activeTunables(s), c.winners, c.blend), `blend[${i}]`);
+  });
+  T.plan.forEach((c, i) => { const t = new js.Tuner(c.cfg, 77), s = strat(c.fields); same(c.expected, c.expected.map(() => t._plan(s, t.activeTunables(s))), `plan[${i}]`); });
+  T.passes.forEach(([ch, mean, lcb, k, expected], i) => { if (js.clonePasses(ch, mean, lcb, k) !== expected) bad.push(`clonePasses[${i}] ${JSON.stringify([ch, mean, lcb, k])}: python ${expected}`); });
+  T.alpha.forEach(([c, n, expected], i) => same(expected, js.alphaFor(c, n), `alphaFor[${i}] ${c},${n}`));
+  // scripted round-end decisions
+  T.judge.forEach((c, i) => {
+    const tuner = new js.Tuner(c.cfg, undefined, { gate: () => c.gate.map((r) => r.slice()), blender: c.empty_blend ? () => ({}) : undefined });
+    const engine = new js.PaperEngine(js.parseSettings(c.payload, js.defaultStrategy(), false), 1.0);
+    let verdict = null;
+    for (const ev of c.events) { engine.onEvent(ev); verdict = tuner.feed(ev, engine); if (verdict) break; }
+    same(c.expected, JSON.parse(JSON.stringify(verdict)), `judge[${i}:${c.name}]`);
+  });
+  // the terminal's handling of the tuner, step by step
+  T.script.forEach((c, i) => {
+    const st = new js.TerminalState(js.defaultStrategy(), { source: "demo", simulated: true, start_sol: 5.0 });
+    st.updateSettings(c.payload); st.clock = c.events[0].t - 1000;
+    c.steps.forEach((step, n) => {
+      const [kind, arg] = Object.entries(step)[0];
+      if (kind === "configure") st.configureTuner(arg);
+      else if (kind === "configure_bad") { try { st.configureTuner(arg); } catch (e) { /* refused, as in Python */ } }
+      else if (kind === "emit") for (const ev of c.events.slice(arg[0], arg[1])) st.emit(ev);
+      else if (kind === "running") st.setRunning(arg);
+      else if (kind === "settings") st.updateSettings(arg);
+      else if (kind === "lap") st.setLap(arg);
+      else if (kind === "reset") st.reset();
+      const s = JSON.parse(JSON.stringify(st.snapshot("all")));
+      same(c.observed[n], { tuner: s.tuner, settings: s.settings, running: s.running, paper: s.paper, lap: s.lap, stats: s.stats, notes: st.logs.filter((l) => l.kind === "tune" || l.kind === "info").map((l) => l.text) }, `script[${i}:${c.name}] step ${n} ${JSON.stringify(step).slice(0, 60)}`);
+    });
+  });
+  T.parse.forEach((c, i) => {
+    let got; try { got = { ok: js.parseTuner(c.data, { enabled: false, clones: 6, round_launches: 100, caution: "balanced", blend: 0.5, params: js.TUNABLES.map((t) => t.key) }) }; } catch (e) { got = { error: e.message }; }
+    same(c.expected, got, `parseTuner[${i}] ${JSON.stringify(c.data)}`);
+  });
+}
+console.log(bad.length ? bad.slice(0, 25).join("\n") + `\n${bad.length} mismatch(es)` : `ok: ${cases.settings.length} settings cases, ${cases.runs.length} runs, ${cases.features.length} feature/score cases, ${Object.keys(cases.laps.laps).length} lap cases, ${cases.tuner.gate.length + cases.tuner.plan.length + cases.tuner.parse.length} tuner cases`);
 process.exit(bad.length ? 1 : 0);

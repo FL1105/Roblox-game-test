@@ -1,6 +1,6 @@
 """Usage:
     python -m sniper.terminal                       # demo: synthetic market, nothing real
-    python -m sniper.terminal --replay launches.jsonl
+    python -m sniper.terminal --replay launches.jsonl [--loop]
     python -m sniper.terminal --live --rpc URL      # real launches, still paper trading
 
 Paper trading only: there is no wallet, key or order-sending code anywhere in this program.
@@ -31,7 +31,7 @@ def build(args) -> tuple[TerminalState, object, callable]:
         events = read_jsonl(args.replay)
         if not events:
             raise SystemExit(f"{args.replay} has no events")
-        return TerminalState(source=f"replay {os.path.basename(args.replay)}", simulated=False, model_policy=model_policy), ReplayFeed(events, args.speed), lambda: None
+        return TerminalState(source=f"replay {os.path.basename(args.replay)}", simulated=False, model_policy=model_policy), ReplayFeed(events, args.speed, loop=getattr(args, "loop", False)), lambda: None
 
     if args.live:
         from ..listener.__main__ import DEFAULT_RPC, make_scan_fn
@@ -60,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--replay", metavar="FILE", help="replay a JSONL recording made by sniper.listener")
     mode.add_argument("--live", action="store_true", help="follow real launches (needs 'pip install websockets')")
     p.add_argument("--speed", type=float, default=5.0, help="replay/demo speed multiplier (default 5)")
+    p.add_argument("--loop", action="store_true", help="with --replay: play the recording again when it ends (repeat laps are marked, and are not new evidence)")
     p.add_argument("--rpc", help="Solana RPC URL for --live (default: $SOLANA_RPC_URL)")
     p.add_argument("--events", help="with --live: also append events to this JSONL file")
     p.add_argument("--model", help="trained hold/sell model JSON; enables the learned exit option")

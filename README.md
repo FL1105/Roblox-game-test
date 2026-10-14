@@ -53,6 +53,16 @@ speed (decision-to-fill delay), max hold time, and risk tolerance (which verdict
 The "AI market analysis / smart entry-exit / AI agent" switches from the site that inspired the layout are
 deliberately absent: they define no behaviour to test.
 
+**Auto-tune** (Auto-tune tab, `sniper/paper/tuner.py`): while the bot runs, 2 to 8 *clones* of it trade the same tokens on
+paper, each with a few settings nudged (take profit, stop loss, trailing stop, max hold, min liquidity, dev hold, min trades,
+and the confirm / don't-chase settings when they apply). After every round of N launches each clone is compared with the real
+bot launch by launch. A clone only counts if its lower confidence bound (paired bootstrap, tightened for the number of clones
+you run) is above zero and it acted differently on at least 5 launches; then the bot's settings move part of the way toward
+the winners, weighted by how much each gained, inside fixed limits. Clones are judged only on launches that arrived after
+they were created, and tuning pauses on repeated laps of a recording (the bot has already seen that data). It cannot create an
+edge that is not there: on the real recording it learns that not trading beats trading. `--loop` makes `--replay` play the
+recording again in marked repeat laps.
+
 Browser click test: `python -m sniper.terminal --no-browser &`, then `npm i playwright-core` and
 `node e2e/terminal_click_test.js` (see the file header; it changes that instance's settings).
 

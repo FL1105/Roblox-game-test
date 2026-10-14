@@ -61,6 +61,11 @@ class TokenTape {
   priceAt(t) { const i = this.indexAt(t); return i < 0 ? this.launch_price : this.price(i); }
   vsolAt(t) { const i = this.indexAt(t); return i < 0 ? VIRTUAL_START_SOL : this.vs[i]; }
 }
+function copyTape(t) {
+  const c = new TokenTape(t.launch_t, t.dev_pct, t.launch_price);
+  c.ts = t.ts.slice(); c.vs = t.vs.slice(); c.vt = t.vt.slice(); c.peak_price = t.peak_price; c.peak_t = t.peak_t;
+  return c;
+}
 function tapeFromLaunch(launch) {
   const tape = new TokenTape(launch.t, launch.dev_tokens / TOTAL_SUPPLY * 100, launch.v_sol / launch.v_tokens);
   tape.add(launch.t, launch.v_sol, launch.v_tokens);
@@ -157,6 +162,20 @@ class PaperEngine {
     this.equity_curve = [this.start_sol];
     this.skipped = {};
     this.last_t = 0;
+  }
+  // An independent copy that carries on from this exact state under `strategy`, sharing nothing mutable with the original (port of PaperEngine.fork).
+  fork(strategy) {
+    const c = new PaperEngine(strategy || this.s, this.start_sol, null, this.model_policy);
+    c.enabled = this.enabled; c.cash = this.cash; c.last_t = this.last_t;
+    c.tapes = new Map([...this.tapes].map(([m, t]) => [m, copyTape(t)]));
+    c.curve = new Map(this.curve); c.launch = new Map(this.launch); c.scans = new Map(this.scans);  // their values are never modified in place
+    c.pending = new Map(this.pending); c.watch = new Map(this.watch); c.pending_state = new Map(this.pending_state);
+    c.creator_sold = new Map(this.creator_sold); c.known_ruggers = new Set(this.known_ruggers);
+    c.creator_launches = new Map([...this.creator_launches].map(([k, v]) => [k, v.slice()]));
+    c.positions = new Map([...this.positions].map(([m, p]) => [m, Object.assign({}, p)]));
+    c.closed = this.closed.slice(); c.equity_curve = this.equity_curve.slice(); c.skipped = Object.assign({}, this.skipped);
+    c.rng = makeRng(0);  // (the random position-size mode is not reproducible against Python anyway)
+    return c;
   }
   _note(t, kind, mint, text) { if (this.onNote) this.onNote(t, kind, mint, text); }
   _skip(t, mint, reason) { this.skipped[reason] = (this.skipped[reason] || 0) + 1; this._note(t, "skip", mint, `skipped (${reason})`); }
@@ -512,6 +531,197 @@ const PRESETS = {
 };
 
 /* ---------------- terminal state (port of TerminalState) ---------------- */
+/* ---------------- auto-tune with clones (port of sniper/paper/tuner.py; see that file for the reasoning) ---------------- */
+const CAUTION = { eager: 0.8, balanced: 0.9, careful: 0.95, strict: 0.99 };
+const BOOTSTRAP_DRAWS = 1000, MIN_DIFFERING = 5, MAX_HISTORY = 30, TUNER_SEED = 20261014;
+function snap(x, precision) { const v = Math.floor(x / precision + 0.5) * precision; return Math.floor(v * 1e6 + 0.5) / 1e6; }
+function pct(x) { return Math.floor(x * 100 + 0.5); }
+function pyList(a) { return "[" + a.map((x) => `'${x}'`).join(", ") + "]"; }  // how Python prints a list of strings, so error messages match
+function fmtNum(v) { return String(+Number(v).toPrecision(6)); }
+function meanOf(xs) { if (!xs.length) return 0; let s = 0; for (const x of xs) s += x; return s / xs.length; }
+
+const TUNABLES = [
+  { field: "take_profit_pct", key: "take_profit", label: "Take profit (%)", lo: 8, hi: 150, step: 0.2, precision: 0.5, absolute: false, integer: false, needs: (s) => s.exit_mode === "smart" || (s.exit_mode === "targets" && !s.ladder.length) },
+  { field: "stop_loss_pct", key: "stop_loss", label: "Stop loss (%)", lo: 5, hi: 60, step: 0.2, precision: 0.5, absolute: false, integer: false, needs: () => true },
+  { field: "trailing_stop_pct", key: "trailing_stop_pct", label: "Trailing stop (%)", lo: 0, hi: 40, step: 4, precision: 0.5, absolute: true, integer: false, needs: (s) => s.exit_mode === "targets" },
+  { field: "max_hold_s", key: "max_hold_s", label: "Max hold (s)", lo: 30, hi: 1800, step: 0.3, precision: 5, absolute: false, integer: false, needs: () => true },
+  { field: "min_liquidity_sol", key: "min_liquidity_sol", label: "Min liquidity (SOL)", lo: 0, hi: 20, step: 0.5, precision: 0.1, absolute: true, integer: false, needs: () => true },
+  { field: "max_dev_buy_pct", key: "max_dev_buy_pct", label: "Max dev hold (%)", lo: 1, hi: 50, step: 0.25, precision: 0.5, absolute: false, integer: false, needs: () => true },
+  { field: "min_trades", key: "min_trades", label: "Min trades seen", lo: 0, hi: 30, step: 2, precision: 1, absolute: true, integer: true, needs: () => true },
+  { field: "max_entry_gain_pct", key: "max_entry_gain_pct", label: "Max gain already (%)", lo: 10, hi: 1000, step: 0.25, precision: 1, absolute: false, integer: false, needs: (s) => s.max_entry_gain_pct < 100000 },
+  { field: "confirm_gain_pct", key: "confirm_gain_pct", label: "Confirmation gain (%)", lo: 1, hi: 60, step: 0.25, precision: 0.5, absolute: false, integer: false, needs: (s) => s.entry_mode === "confirm" },
+];
+const TUNABLE_BY_KEY = Object.fromEntries(TUNABLES.map((t) => [t.key, t]));
+const DEFAULT_PARAMS = TUNABLES.map((t) => t.key);
+
+function defaultTunerConfig() { return { enabled: false, clones: 6, round_launches: 100, caution: "balanced", blend: 0.5, params: DEFAULT_PARAMS.slice() }; }
+function parseTuner(data, current) {
+  const known = ["enabled", "clones", "round_launches", "caution", "blend", "params"];
+  const unknown = Object.keys(data).filter((k) => !known.includes(k)).sort();
+  if (unknown.length) throw new Error(`unknown tuner setting: ${unknown[0]}`);
+  const enabled = has(data, "enabled") ? data.enabled : current.enabled;
+  if (typeof enabled !== "boolean") throw new Error("Auto-tune must be on or off");
+  const whole = (key, label, lo, hi, cur) => {
+    const v = has(data, key) ? data[key] : cur;
+    if (typeof v !== "number" || !Number.isFinite(v) || v !== Math.trunc(v) || !(lo <= v && v <= hi)) throw new Error(`${label} must be a whole number from ${lo} to ${hi}`);
+    return v;
+  };
+  const clones = whole("clones", "Number of clones", 2, 8, current.clones);
+  const rounds = whole("round_launches", "Launches per round", 20, 1000, current.round_launches);
+  const caution = has(data, "caution") ? data.caution : current.caution;
+  if (typeof caution !== "string" || !has(CAUTION, caution)) throw new Error(`Caution must be one of ${pyList(Object.keys(CAUTION))}`);
+  const blend = has(data, "blend") ? data.blend : current.blend;
+  if (typeof blend !== "number" || Number.isNaN(blend) || !(blend >= 0.1 && blend <= 1.0)) throw new Error("Step size must be a number from 0.1 to 1");
+  const params = has(data, "params") ? data.params : current.params.slice();
+  if (!Array.isArray(params) || params.some((p) => typeof p !== "string" || !has(TUNABLE_BY_KEY, p)) || new Set(params).size !== params.length)
+    throw new Error(`params must be a list drawn from ${pyList(Object.keys(TUNABLE_BY_KEY))}`);
+  return { enabled, clones, round_launches: rounds, caution, blend, params: DEFAULT_PARAMS.filter((k) => params.includes(k)) };
+}
+
+/** Net return (%) of what `engine` did on each launch: closed trades, plus open positions marked to the current price. */
+function launchOutcomes(engine, mints) {
+  const wanted = new Set(mints), out = new Map();
+  for (const c of engine.closed) if (wanted.has(c.mint)) out.set(c.mint, (out.get(c.mint) || 0) + c.ret_pct);
+  for (const [mint, pos] of engine.positions) {
+    if (wanted.has(mint) && engine.curve.has(mint)) {
+      const total = pos.realized_pnl + quoteSell(engine.curve.get(mint), pos.tokens, engine.s.fee_bps) - engine.s.tx_cost_sol - pos.sol_in - pos.entry_tx_left;
+      out.set(mint, (out.get(mint) || 0) + total / pos.orig_sol_in * 100);
+    }
+  }
+  return out;
+}
+function tradeCount(engine, mints) {
+  const wanted = new Set(mints), seen = new Set();
+  for (const c of engine.closed) if (wanted.has(c.mint)) seen.add(c.mint);
+  for (const m of engine.positions.keys()) if (wanted.has(m)) seen.add(m);
+  return seen.size;
+}
+const outVec = (out, mints) => mints.map((m) => (out.has(m) ? out.get(m) : 0));
+
+function alphaFor(caution, nClones) { return (1 - CAUTION[caution]) / nClones; }
+function clonePasses(changes, mean, lcb, differing) { return Object.keys(changes).length > 0 && mean > 0 && differing >= MIN_DIFFERING && lcb > 0; }
+function resampleCounts(n, rng) {
+  const draws = [];
+  for (let b = 0; b < BOOTSTRAP_DRAWS; b++) { const counts = new Array(n).fill(0); for (let i = 0; i < n; i++) counts[Math.floor(rng() * n)] += 1; draws.push(counts); }
+  return draws;
+}
+function pairedGate(diffs, alpha, rng, counts) {
+  const n = diffs.length ? diffs[0].length : 0;
+  if (n === 0) return diffs.map(() => [0, 0, 0]);
+  const draws = counts || resampleCounts(n, rng), out = [];
+  for (const d of diffs) {
+    const moved = []; d.forEach((x, j) => { if (Math.abs(x) > 1e-9) moved.push([j, x]); });
+    const boots = [];
+    for (const c of draws) { let total = 0; for (const [j, x] of moved) total += c[j] * x; boots.push(total / n); }
+    boots.sort((a, b) => a - b);
+    out.push([meanOf(d), boots[Math.floor(alpha * draws.length)], moved.length]);
+  }
+  return out;
+}
+function blendChanges(strategy, tunables, winners, blend) {
+  const changes = {};
+  if (!winners.length) return changes;
+  let total = 0; for (const [, gain] of winners) total += gain;
+  for (const t of tunables) {
+    const cur = Number(strategy[t.field]);
+    let avg = 0;
+    for (const [tried, gain] of winners) avg += gain / total * (has(tried, t.key) ? tried[t.key] : cur);
+    const lo = Math.min(t.lo, cur), hi = Math.max(t.hi, cur);
+    const next = Math.min(Math.max(snap(cur + blend * (avg - cur), t.precision), lo), hi);
+    if (next !== cur) changes[t.key] = [cur, next];
+  }
+  return changes;
+}
+
+class Tuner {
+  constructor(config, seed, hooks) {
+    this.hooks = hooks || {};  // replaceable so tests can script the statistics
+    this.cfg = config || defaultTunerConfig(); this.rng = mulberry32(seed === undefined ? TUNER_SEED : seed);
+    this.clones = []; this.round_mints = []; this.round_no = 0; this.history = []; this.paused = null;
+  }
+  configure(data) { this.cfg = parseTuner(data, this.cfg); this.clear(); return this.cfg; }
+  clear() { this.clones = []; this.round_mints = []; }
+  feed(ev, champion) {
+    if (!this.cfg.enabled || this.paused) return null;
+    if (!this.clones.length) { this._startRound(champion); return null; }
+    for (const c of this.clones) c.engine.onEvent(ev);
+    if (ev.type === "new_token") {
+      this.round_mints.push(ev.mint);
+      if (this.round_mints.length >= this.cfg.round_launches) { const verdict = this._judge(champion, ev.t); this.clear(); return verdict; }
+    }
+    return null;
+  }
+  activeTunables(strategy) { return TUNABLES.filter((t) => this.cfg.params.includes(t.key) && t.needs(strategy)); }
+  _startRound(champion) {
+    this.round_mints = [];
+    const plans = this._plan(champion.s, this.activeTunables(champion.s));
+    this.clones = plans.map((changes, i) => {
+      const patch = {}; for (const [k, v] of Object.entries(changes)) patch[TUNABLE_BY_KEY[k].field] = TUNABLE_BY_KEY[k].integer ? Math.trunc(v) : v;
+      return { id: i + 1, changes, engine: champion.fork(Object.keys(changes).length ? Object.assign({}, champion.s, patch) : champion.s) };
+    });
+  }
+  _plan(strategy, tunables) {
+    const n = this.cfg.clones, plans = [];
+    if (!tunables.length) return Array.from({ length: n }, () => ({}));
+    for (let p = 0; p < Math.floor((n + 1) / 2); p++) {
+      let chosen = tunables.filter(() => this.rng() < 0.5);
+      if (!chosen.length) chosen = [tunables[Math.floor(this.rng() * tunables.length)]];
+      const up = {}, down = {};
+      for (const t of chosen) {
+        const cur = Number(strategy[t.field]);
+        let size = Math.max(t.absolute ? t.step : t.step * Math.abs(cur), t.precision);
+        size *= 0.5 + 0.5 * this.rng();
+        const lo = Math.min(t.lo, cur), hi = Math.max(t.hi, cur);
+        const a = Math.min(Math.max(snap(cur + size, t.precision), lo), hi), b = Math.min(Math.max(snap(cur - size, t.precision), lo), hi);
+        if (a !== cur) up[t.key] = a;
+        if (b !== cur) down[t.key] = b;
+      }
+      plans.push(up, down);
+    }
+    return plans.slice(0, n);
+  }
+  _judge(champion, now) {
+    const mints = this.round_mints, n = mints.length;
+    this.round_no += 1;  // rounds are numbered by how many have finished, so an abandoned round leaves no gap
+    const botVec = outVec(launchOutcomes(champion, mints), mints);
+    const diffs = this.clones.map((c) => { const v = outVec(launchOutcomes(c.engine, mints), mints); return v.map((x, i) => x - botVec[i]); });
+    const gate = (this.hooks.gate || pairedGate)(diffs, alphaFor(this.cfg.caution, this.clones.length), this.rng);
+    const rows = this.clones.map((c, i) => {
+      const [mean, lcb, differing] = gate[i];
+      return { id: c.id, changes: Object.assign({}, c.changes), trades: tradeCount(c.engine, mints), mean, lcb, differing, passed: clonePasses(c.changes, mean, lcb, differing) };
+    });
+    const winners = []; this.clones.forEach((c, i) => { if (rows[i].passed) winners.push([c.changes, rows[i].mean]); });
+    const changes = (this.hooks.blender || blendChanges)(champion.s, this.activeTunables(champion.s), winners, this.cfg.blend);
+    const confidence = pct(CAUTION[this.cfg.caution]);
+    let decision, reason;
+    if (winners.length && Object.keys(changes).length) { decision = "changed"; reason = `${winners.length} of ${this.clones.length} clones beat the bot with ${confidence}% confidence; moved ${pct(this.cfg.blend)}% of the way toward them`; }
+    else if (winners.length) { decision = "kept"; reason = "the winning move was too small to apply"; }
+    else { decision = "kept"; reason = `no clone beat the bot with ${confidence}% confidence`; }
+    const verdict = { round: this.round_no, t: now, launches: n, bot_mean: meanOf(botVec), bot_trades: tradeCount(champion, mints), clones: rows, decision, reason, changes };
+    this.history.unshift(verdict); this.history.length = Math.min(this.history.length, MAX_HISTORY);
+    return verdict;
+  }
+  snapshot(champion) {
+    const cfg = this.cfg, mints = this.round_mints;
+    const botVec = mints.length ? outVec(launchOutcomes(champion, mints), mints) : [];
+    const live = this.clones.map((c) => {
+      const row = { id: c.id, changes: Object.assign({}, c.changes), trades: 0, mean: 0, delta: 0 };
+      if (mints.length) { const vec = outVec(launchOutcomes(c.engine, mints), mints); row.trades = tradeCount(c.engine, mints); row.mean = meanOf(vec); row.delta = meanOf(vec.map((x, i) => x - botVec[i])); }
+      return row;
+    });
+    const active = new Set(TUNABLES.filter((t) => t.needs(champion.s)).map((t) => t.key));
+    return {
+      enabled: cfg.enabled, paused: this.paused,
+      config: { clones: cfg.clones, round_launches: cfg.round_launches, caution: cfg.caution, blend: cfg.blend, params: cfg.params.slice() },
+      cautions: Object.fromEntries(Object.entries(CAUTION).map(([k, v]) => [k, pct(v)])),
+      round: this.clones.length ? this.round_no + 1 : this.round_no, progress: mints.length,
+      params: TUNABLES.map((t) => ({ key: t.key, label: t.label, tuned: cfg.params.includes(t.key), active: active.has(t.key), lo: t.lo, hi: t.hi, value: Number(champion.s[t.field]) })),
+      clones: live, bot_mean: meanOf(botVec), bot_trades: mints.length ? tradeCount(champion, mints) : 0,
+      history: this.history,
+    };
+  }
+}
+
 class TerminalState {
   constructor(strategy, opts) {
     opts = opts || {};
@@ -520,7 +730,7 @@ class TerminalState {
     this.strategy = strategy || defaultStrategy();
     this.model_policy = opts.model ? new ModelExit(opts.model) : null;
     this.sources = opts.sources || []; this.source_id = opts.source_id || null; this.note = opts.note || null;
-    this.running = false; this.feed_status = "starting"; this._logSize = opts.log_size || 500;
+    this.running = false; this.feed_status = "starting"; this.lap = 1; this.tuner = new Tuner(); this._logSize = opts.log_size || 500;
     this.nowMs = opts.now || (() => Date.now());
     this._resetLocked();
   }
@@ -529,6 +739,7 @@ class TerminalState {
     this.events_seen = 0; this.clock = 0;
     this.engine = new PaperEngine(this.strategy, this.start_sol, (t, k, m, x) => this._onNote(t, k, m, x), this.model_policy);
     this.engine.enabled = this.running;
+    this.tuner.clear();
   }
   reset(startSol) {
     if (startSol !== undefined && startSol !== null) {
@@ -540,11 +751,18 @@ class TerminalState {
   }
   setRunning(running) {
     this.running = running; this.engine.enabled = running;
+    this.tuner.clear();  // clones only make sense while the bot is trading: start a fresh round whenever that changes
     this._log(this.clock || this.nowMs(), "info", "", running ? "bot started" : "bot stopped: no new positions will open");
   }
   updateSettings(data) {
     this.strategy = parseSettings(data, this.strategy, !!this.model_policy); this.engine.s = this.strategy;
+    this.tuner.clear();  // the bot's settings are the centre the clones nudge around
     return settingsDict(this.strategy);
+  }
+  setLap(n) {
+    this.lap = n;
+    this.tuner.paused = n > 1 ? "repeat lap: the bot has already seen this data" : null; this.tuner.clear();
+    this._log(this.clock || this.nowMs(), "info", "", `lap ${n}: the recording plays again under new names. The bot has already seen these launches, so results from repeats are not new evidence`);
   }
   setFeedStatus(status) {
     this.feed_status = status;
@@ -561,6 +779,27 @@ class TerminalState {
       this._log(ev.t, "scan", ev.mint, `${this.tokens.get(ev.mint).symbol} scanned: ${ev.verdict}` + (ev.summary ? ` (${ev.summary})` : ""));
     }
     this.engine.onEvent(ev);
+    this._tune(ev);
+  }
+  configureTuner(data) {
+    this.tuner.configure(data);
+    const c = this.tuner.cfg;
+    this._log(this.clock || this.nowMs(), "info", "", "auto-tune " + (c.enabled ? `on (${c.clones} clones, ${c.round_launches} launches per round)` : "off"));
+    return this.tuner.snapshot(this.engine);
+  }
+  _tune(ev) {  // let the clones see the event; when a round ends, move the bot's settings if the clones earned it
+    if (!this.running) return;
+    const verdict = this.tuner.feed(ev, this.engine);
+    if (!verdict) return;
+    if (Object.keys(verdict.changes).length) {
+      const patch = {}; for (const [k, [, next]] of Object.entries(verdict.changes)) patch[k] = next;
+      try { this.strategy = parseSettings(patch, this.strategy, !!this.model_policy); this.engine.s = this.strategy; }
+      catch (e) { verdict.decision = "kept"; verdict.reason = `change refused: ${e.message}`; verdict.changes = {}; }
+    }
+    if (Object.keys(verdict.changes).length) {
+      const moves = Object.entries(verdict.changes).map(([k, [old, next]]) => `${TUNABLE_BY_KEY[k].label} ${fmtNum(old)} to ${fmtNum(next)}`).join(", ");
+      this._log(ev.t, "tune", "", `auto-tune round ${verdict.round}: ${moves} (${verdict.reason})`);
+    } else this._log(ev.t, "tune", "", `auto-tune round ${verdict.round}: settings kept (${verdict.reason})`);
   }
   _onNote(t, kind, mint, text) {
     const tok = this.tokens.get(mint), sym = tok ? tok.symbol : mint.slice(0, 6);
@@ -581,7 +820,7 @@ class TerminalState {
     const pinned = items.slice(0, Math.max(items.length - limit, 0)).filter(([m]) => e.positions.has(m) || e.pending.has(m));
     const entries = pinned.concat(items.slice(-limit)).reverse();
     return {
-      running: this.running, source: this.source, simulated: this.simulated, feed_status: this.feed_status, clock: this.clock, events_seen: this.events_seen,
+      running: this.running, source: this.source, simulated: this.simulated, feed_status: this.feed_status, clock: this.clock, events_seen: this.events_seen, lap: this.lap, tuner: this.tuner.snapshot(this.engine),
       paper: { start: this.start_sol, equity: e.cash + invested, cash: e.cash, open: e.positions.size },
       settings: settingsDict(this.strategy), presets: PRESETS, has_model: !!this.model_policy, sources: this.sources, source_id: this.source_id,
       stats: { window: win, trades: closed.length, wins: wins.length, win_rate: closed.length ? wins.length / closed.length * 100 : 0, pnl_sol: closed.reduce((a, c) => a + c.pnl_sol, 0) },
@@ -689,10 +928,22 @@ class DemoFeed {
 }
 
 /* ---------------- replay of a recorded (real) event stream, paced by a timer ---------------- */
+/* A repeat of the recording: the same prices, moved later in time, with new mint and wallet names so the bot sees a fresh-looking market. */
+function repeatLap(events, lap) {
+  const span = events[events.length - 1].t - events[0].t + 60000, shift = (lap - 1) * span, tag = "~" + lap;
+  return events.map((e) => {
+    const o = Object.assign({}, e, { t: e.t + shift, mint: e.mint + tag });
+    if (e.type === "new_token") o.creator = e.creator + tag;
+    else if (e.type === "trade") o.trader = e.trader + tag;
+    return o;
+  });
+}
+
 class ReplayFeed {
   constructor(state, events, opts) {
     opts = opts || {};
-    this.state = state; this.events = events.slice().sort((a, b) => a.t - b.t); this.speed = opts.speed || 20; this.maxGapMs = 1000;
+    this.state = state; this.base = events.slice().sort((a, b) => a.t - b.t); this.events = this.base; this.speed = opts.speed || 20; this.maxGapMs = 1000;
+    this.loop = !!opts.loop; this.lap = 1;
     this.i = 0; this.target = this.events.length ? this.events[0].t : 0; this.done = false;
   }
   tick(realMs) {
@@ -701,7 +952,10 @@ class ReplayFeed {
     const next = this.events[this.i];
     if (next && next.t - this.target > this.maxGapMs * this.speed) this.target = next.t - this.maxGapMs * this.speed;  // cap idle gaps at 1 s of real time
     while (this.i < this.events.length && this.events[this.i].t <= this.target) this.state.emit(this.events[this.i++]);
-    if (this.i >= this.events.length) { this.done = true; this.state.setFeedStatus("finished"); }
+    if (this.i >= this.events.length) {
+      if (this.loop && this.base.length) { this.lap += 1; this.events = repeatLap(this.base, this.lap); this.i = 0; this.state.setLap(this.lap); }
+      else { this.done = true; this.state.setFeedStatus("finished"); }
+    }
   }
 }
 
@@ -717,6 +971,7 @@ function makeApi(app) {
     try {
       if (path === "/api/bot") { if (typeof data.running !== "boolean") throw new Error("running must be true or false"); state.setRunning(data.running); return json(200, { running: state.running }); }
       if (path === "/api/settings") return json(200, { settings: state.updateSettings(data) });
+      if (path === "/api/tuner") return json(200, { tuner: state.configureTuner(data) });
       if (path === "/api/source") { app.switchSource(data.id); return json(200, { source_id: app.state.source_id }); }
       if (path === "/api/reset") { state.reset(has(data, "start_sol") ? data.start_sol : undefined); return json(200, { ok: true, start_sol: state.start_sol }); }
     } catch (e) { return json(400, { error: e.message }); }
@@ -724,7 +979,7 @@ function makeApi(app) {
   };
 }
 
-const api = { ReplayFeed, PaperEngine, TerminalState, ModelExit, pathFeatures, tapeFromLaunch, TokenTape, smartDecide, parseSettings, settingsDict, defaultStrategy, defaultStrategyFields, PRESETS, generateDemo, DemoFeed, makeApi, quoteBuy, quoteSell, Sim };
+const api = { ReplayFeed, repeatLap, Tuner, parseTuner, pairedGate, resampleCounts, blendChanges, alphaFor, clonePasses, launchOutcomes, snap, mulberry32, TUNABLES, PaperEngine, TerminalState, ModelExit, pathFeatures, tapeFromLaunch, TokenTape, smartDecide, parseSettings, settingsDict, defaultStrategy, defaultStrategyFields, PRESETS, generateDemo, DemoFeed, makeApi, quoteBuy, quoteSell, Sim };
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 if (typeof window !== "undefined" && root === window) {
   let real = null;
@@ -742,13 +997,15 @@ if (typeof window !== "undefined" && root === window) {
       });
       if (prev && prev.running) st.setRunning(true);
       this.state = st;
-      this.feed = id === "real" ? new ReplayFeed(st, real.events) : new DemoFeed(st);
+      this.feed = id === "real" ? new ReplayFeed(st, real.events, { loop: true }) : new DemoFeed(st);
     },
   };
   app.switchSource(real ? "real" : "demo");
   const localApi = makeApi(app), realFetch = window.fetch.bind(window);
   window.fetch = (url, opts) => (typeof url === "string" && url.startsWith("/api/")) ? localApi(url, opts) : realFetch(url, opts);
-  setInterval(() => app.feed.tick(100), 100);
+  // Advance by the time that really passed, not a fixed 100 ms: browsers slow timers down in background tabs and embedded frames, which would otherwise slow the market to a crawl.
+  let lastTick = Date.now();
+  setInterval(() => { const now = Date.now(); app.feed.tick(Math.min(Math.max(now - lastTick, 0), 3000)); lastTick = now; }, 100);
   window.__sniperLocal = app;
 }
 })(typeof window !== "undefined" ? window : globalThis);

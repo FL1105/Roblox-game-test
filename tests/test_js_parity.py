@@ -12,6 +12,8 @@ from pathlib import Path
 from sniper.policy.features import FEATURES
 from sniper.policy.model import HoldModel, Logistic, ModelExit
 from sniper.pump import synth
+from sniper.paper.engine import PaperEngine
+from sniper.paper.tuner import DEFAULT_PARAMS, Tuner, TunerConfig, alpha_for, blend_changes, clone_passes, mulberry32, paired_gate, parse_tuner, resample_counts, snap
 from sniper.pump.events import to_wire
 from sniper.terminal.state import DEFAULT_ROWS, PRESETS, TerminalState, default_strategy, parse_settings, settings_dict
 
@@ -227,6 +229,168 @@ def handcrafted():
     return out
 
 
+def tuner_scenarios(market, no_random):
+    from .test_tuner import pump_and_dump
+
+    def cfg(**kw):
+        return {"enabled": True, "clones": 6, "round_launches": 50, "caution": "eager", "blend": 0.5, "params": list(DEFAULT_PARAMS), **kw}
+
+    quick = {"latency_ms": 0, "tx_cost_sol": 0, "max_open": 20, "max_hold_s": 30, "take_profit": 60, "size_mode": "fixed", "amount_min": 0.1, "amount_max": 0.1}
+    fixed = {"size_mode": "fixed"}
+    return [  # (name, settings, bankroll, events, uses_model, tuner settings)
+        ("tuner-market-eager", fixed, 5.0, market, False, cfg()),
+        ("tuner-8-clones-fast-rounds", {**no_random("aggressive")}, 50.0, market, False, cfg(clones=8, round_launches=30, blend=0.7)),
+        ("tuner-smart-confirm", {**fixed, "exit_mode": "smart", "entry_mode": "confirm", "confirm_gain_pct": 6, "max_entry_gain_pct": 120}, 5.0, market, False, cfg(round_launches=40)),
+        ("tuner-ladder", {**PRESETS["ladder"]["settings"], **fixed}, 5.0, market, False, cfg()),
+        ("tuner-strict-3-clones", fixed, 5.0, market, False, cfg(clones=3, caution="strict", round_launches=60)),
+        ("tuner-careful-filters", {**fixed, "max_entry_gain_pct": 150, "min_liquidity_sol": 0.1}, 5.0, market, False, cfg(caution="careful")),
+        ("tuner-pump-and-dump", quick, 5.0, pump_and_dump(160, start=1_700_000_000_000), False, cfg(round_launches=40, caution="balanced", params=["take_profit"])),
+        ("tuner-pump-and-dump-all", quick, 5.0, pump_and_dump(160, start=1_700_000_000_000), False, cfg(round_launches=40, caution="eager")),
+        ("tuner-model-exit", {**fixed, "exit_mode": "model", "latency_ms": 500}, 5.0, market, True, cfg()),
+        ("tuner-subset-params", fixed, 5.0, market, False, cfg(params=["stop_loss", "max_hold_s"], clones=4)),
+        ("tuner-off", fixed, 5.0, market, False, {"enabled": False}),
+        ("tuner-many-rounds", quick, 5.0, pump_and_dump(700, start=1_700_000_000_000), False, cfg(clones=2, round_launches=20, params=[])),
+    ]
+
+
+def tuner_cases():
+    """Pure pieces of the tuner on awkward inputs, with what Python makes of them."""
+    import random
+    rnd = random.Random(5)
+    out = {"rng": {str(seed): [mulberry32(seed)() for _ in range(1)] and (lambda g: [g() for _ in range(40)])(mulberry32(seed)) for seed in (0, 1, 5, 20261014, 4294967295, 123456789)}}
+    out["snap"] = [[x, p, snap(x, p)] for x, p in [(0.7000000000000001, 0.1), (32.74, 0.5), (32.75, 0.5), (7.5, 1), (1234, 5), (0, 0.5), (19.95, 0.1), (149.999, 0.5), (2.675, 0.01 * 10)] +
+                   [(rnd.uniform(0, 200), rnd.choice([0.1, 0.5, 1, 5])) for _ in range(60)]]
+    gates = []
+    for i in range(8):
+        n = rnd.choice([20, 50, 100])
+        diffs = [[(rnd.uniform(-40, 60) if rnd.random() < [0.1, 0.3, 0.8][i % 3] else 0.0) for _ in range(n)] for _ in range(rnd.choice([1, 3, 6]))]
+        alpha, seed = rnd.choice([0.1 / 6, 0.05, 0.01 / 8, 0.2]), rnd.randrange(1, 10**6)
+        gates.append({"diffs": diffs, "alpha": alpha, "seed": seed, "expected": [list(r) for r in paired_gate(diffs, alpha, mulberry32(seed))]})
+    out["gate"] = gates
+    from sniper.paper.engine import Strategy
+    strategies = [{}, {"take_profit_pct": 300.0}, {"exit_mode": "smart", "entry_mode": "confirm", "max_entry_gain_pct": 80.0}, {"ladder": ((30.0, 50.0), (60.0, 25.0))},
+                  {"exit_mode": "model"}, {"stop_loss_pct": 58.0, "min_trades": 29, "max_dev_buy_pct": 1.0, "trailing_stop_pct": 39.0}]
+    blends = []
+    for fields in strategies:
+        st = Strategy(**fields)
+        for winners in ([({"take_profit": 40.0}, 3.0), ({"take_profit": 32.0, "stop_loss": 10.0}, 1.0)], [({"stop_loss": 90.0, "min_trades": 40.0}, 2.0)], []):
+            tunables = Tuner(TunerConfig(enabled=True)).active_tunables(st)
+            blends.append({"fields": {k: ([list(r) for r in v] if k == "ladder" else v) for k, v in fields.items()}, "winners": [[w, g] for w, g in winners], "blend": rnd.choice([0.1, 0.5, 1.0]),
+                           "expected": blend_changes(st, tunables, winners, 0.5)})
+    for b in blends:
+        st = Strategy(**{k: (tuple(tuple(r) for r in v) if k == "ladder" else v) for k, v in b["fields"].items()})
+        b["expected"] = blend_changes(st, Tuner(TunerConfig(enabled=True)).active_tunables(st), [(w, g) for w, g in b["winners"]], b["blend"])
+    out["blend"] = blends
+    plans = []
+    for fields in strategies:
+        for cfg in (TunerConfig(enabled=True, clones=6), TunerConfig(enabled=True, clones=3, params=("take_profit", "stop_loss")), TunerConfig(enabled=True, clones=8, params=("min_trades", "max_dev_buy_pct"))):
+            tuner = Tuner(cfg, seed=77)
+            st = Strategy(**fields)
+            plans.append({"fields": {k: ([list(r) for r in v] if k == "ladder" else v) for k, v in fields.items()}, "cfg": {"enabled": True, "clones": cfg.clones, "round_launches": cfg.round_launches,
+                          "caution": cfg.caution, "blend": cfg.blend, "params": list(cfg.params)}, "expected": [tuner._plan(st, tuner.active_tunables(st)) for _ in range(3)]})
+    out["plan"] = plans
+    parses = []
+    base = TunerConfig()
+    for data in [{}, {"enabled": True}, {"clones": 4, "caution": "strict"}, {"blend": 0.25, "params": ["stop_loss", "take_profit"]}, {"params": []}, {"enabled": "yes"}, {"clones": 1}, {"clones": 9}, {"clones": 2.5},
+                 {"clones": True}, {"round_launches": 10}, {"round_launches": 1001}, {"caution": "yolo"}, {"blend": 0}, {"blend": 1.5}, {"blend": True}, {"params": ["nope"]}, {"params": ["stop_loss", "stop_loss"]},
+                 {"params": "stop_loss"}, {"surprise": 1}, {"clones": "6"}, {"round_launches": 100.0}, {"caution": ["x"]}, {"caution": 5}, {"caution": None}, {"caution": {"a": 1}},
+                 {"params": [["take_profit"]]}, {"params": [5]}, {"params": [None]}, {"params": ["take_profit", ["stop_loss"]]}, {"enabled": 1}, {"enabled": None}]:
+        try:
+            cfg = parse_tuner(data, base)
+            parses.append({"data": data, "expected": {"ok": {"enabled": cfg.enabled, "clones": cfg.clones, "round_launches": cfg.round_launches, "caution": cfg.caution, "blend": cfg.blend, "params": list(cfg.params)}}})
+        except ValueError as e:
+            parses.append({"data": data, "expected": {"error": str(e)}})
+    out["parse"] = parses
+    out["passes"] = [[ch, mean, lcb, k, clone_passes(ch, mean, lcb, k)] for ch in ({}, {"take_profit": 40.0})
+                     for mean, lcb, k in [(2.0, 0.5, 5), (2.0, 0.5, 4), (2.0, 0.0, 9), (2.0, -0.1, 9), (0.0, 0.5, 9), (-1.0, 0.5, 9), (2.0, 1e-12, 9)]]
+    out["alpha"] = [[c, n, alpha_for(c, n)] for c in ("eager", "balanced", "careful", "strict") for n in (2, 3, 6, 8)]
+    out["judge"] = judge_cases()
+    out["script"] = script_cases()
+    return out
+
+
+QUICK_PAYLOAD = {"latency_ms": 0, "tx_cost_sol": 0, "max_open": 20, "max_hold_s": 30, "take_profit": 60, "size_mode": "fixed", "amount_min": 0.1, "amount_max": 0.1}
+
+
+def judge_cases():
+    """Round-end decisions with the statistics scripted, so every rule is compared on its own."""
+    from .test_tuner import pump_and_dump
+    events = pump_and_dump(30, start=1_700_000_000_000)
+    specs = [
+        ("one winner", [[3.0, 1.0, 9], [3.0, -1.0, 9], [3.0, -1.0, 9], [3.0, -1.0, 9]], False, "balanced"),
+        ("nobody clears the bar", [[3.0, -1.0, 9]] * 4, False, "strict"),
+        ("win too small to apply", [[3.0, 1.0, 9]] * 4, True, "careful"),
+        ("weighted winners", [[2.0, 0.5, 8], [6.0, 2.0, 12], [1.0, -0.1, 30], [0.5, 0.3, 4]], False, "eager"),
+    ]
+    out = []
+    for name, gate, empty_blend, caution in specs:
+        cfg = TunerConfig(enabled=True, clones=4, round_launches=20, params=("take_profit", "stop_loss"), caution=caution)
+        tuner = Tuner(cfg, gate=lambda diffs, alpha, rng, counts=None, g=gate: [tuple(x) for x in g], blender=(lambda *a: {}) if empty_blend else None)
+        engine = PaperEngine(parse_settings(QUICK_PAYLOAD, default_strategy()), 1.0)
+        verdict = None
+        for ev in events:
+            engine.on_event(ev)
+            verdict = tuner.feed(ev, engine)
+            if verdict:
+                break
+        out.append({"name": name, "events": [wire(e) for e in events], "payload": QUICK_PAYLOAD, "gate": gate, "empty_blend": empty_blend,
+                    "cfg": {"enabled": True, "clones": 4, "round_launches": 20, "caution": caution, "blend": 0.5, "params": ["take_profit", "stop_loss"]}, "expected": verdict})
+    return out
+
+
+def script_cases():
+    """The terminal's own handling of the tuner (stop/start, hand edits, repeat laps, reset), step by step."""
+    from .test_tuner import pump_and_dump
+    events = pump_and_dump(90, start=1_700_000_000_000)
+    cfg = {"enabled": True, "clones": 4, "round_launches": 20, "caution": "balanced", "params": ["take_profit"]}
+    scripts = {
+        "stop-start-edit-lap-reset": [
+            {"configure": cfg}, {"emit": [0, 60]}, {"running": True}, {"emit": [60, 130]}, {"settings": {"take_profit": 45}}, {"emit": [130, 170]},
+            {"running": False}, {"emit": [170, 200]}, {"running": True}, {"emit": [200, 260]}, {"lap": 2}, {"emit": [260, 300]}, {"lap": 1}, {"emit": [300, 400]},
+            {"reset": True}, {"emit": [400, 450]}, {"configure": {"enabled": False}}, {"emit": [440, 450]},
+        ],
+        "walks-the-target-down": [{"configure": cfg}, {"running": True}, {"emit": [0, 150]}, {"emit": [150, 300]}, {"emit": [300, 450]}],
+        "reconfigure-midway": [
+            {"running": True}, {"configure": {**cfg, "round_launches": 40}}, {"emit": [0, 120]}, {"configure": {"clones": 6, "caution": "eager", "blend": 0.8}}, {"emit": [120, 300]},
+            {"configure": {"params": ["take_profit", "stop_loss", "max_hold_s"]}}, {"emit": [300, 450]},
+        ],
+        "bad-config-leaves-everything": [
+            {"configure": cfg}, {"running": True}, {"emit": [0, 50]}, {"configure_bad": {"clones": 99}}, {"emit": [50, 100]}, {"configure_bad": {"caution": ["x"]}}, {"configure_bad": {"params": [["take_profit"]]}},
+        ],
+    }
+    out = []
+    for name, steps in scripts.items():
+        st = TerminalState(default_strategy(), source="demo", simulated=True, start_sol=5.0)
+        st.update_settings(QUICK_PAYLOAD)
+        st.clock = events[0].t - 1000
+        observed = []
+        for step in steps:
+            (kind, arg), = step.items()
+            if kind == "configure":
+                st.configure_tuner(arg)
+            elif kind == "configure_bad":
+                try:
+                    st.configure_tuner(arg)
+                except ValueError:
+                    pass
+            elif kind == "emit":
+                for ev in events[arg[0]:arg[1]]:
+                    st.emit(ev)
+            elif kind == "running":
+                st.set_running(arg)
+            elif kind == "settings":
+                st.update_settings(arg)
+            elif kind == "lap":
+                st.set_lap(arg)
+            elif kind == "reset":
+                st.reset()
+            snap_ = st.snapshot("all")
+            observed.append(json.loads(json.dumps({"tuner": snap_["tuner"], "settings": snap_["settings"], "running": snap_["running"], "paper": snap_["paper"], "lap": snap_["lap"], "stats": snap_["stats"],
+                                       "notes": [l["text"] for l in st.logs if l["kind"] in ("tune", "info")]})))
+        out.append({"name": name, "payload": QUICK_PAYLOAD, "events": [wire(e) for e in events], "steps": steps, "observed": observed})
+    return out
+
+
 def run_cases():
     market = sorted(synth.generate(11, 400, 1_700_000_000_000), key=lambda e: e.t)
     no_random = lambda name: {**PRESETS[name]["settings"], "size_mode": "fixed"}  # JS has its own random numbers
@@ -248,26 +412,76 @@ def run_cases():
         ("market-confirm-smart", {"entry_mode": "confirm", "confirm_gain_pct": 5, "exit_mode": "smart", "latency_ms": 300}, 5.0, market),
         ("market-model-exit", {"exit_mode": "model", "latency_ms": 500}, 5.0, market, True),
         ("market-model-confirm", {"exit_mode": "model", "entry_mode": "confirm", "confirm_gain_pct": 5}, 5.0, market, True),
-    ] + [(entry[0], entry[1], 100.0, market if entry[2] is None else entry[2], *entry[3:]) for entry in handcrafted()]
+    ] + [(entry[0], entry[1], 100.0, market if entry[2] is None else entry[2], *entry[3:]) for entry in handcrafted()] + tuner_scenarios(market, no_random)
     runs = []
     model = fixed_model()
-    for name, payload, bankroll, events, *with_model in scenarios:
-        use_model = bool(with_model and with_model[0])
+    for name, payload, bankroll, events, *extra in scenarios:
+        use_model = bool(extra and extra[0])
+        tuner_cfg = extra[1] if len(extra) > 1 else None
         events = sorted(events, key=lambda e: e.t)
         st = TerminalState(default_strategy(), source="demo", simulated=True, start_sol=bankroll, model_policy=ModelExit(model) if use_model else None)
         st.update_settings(payload)
         st.clock = events[0].t - 1000  # fixes the timestamp on the "bot started" log line
         clock0 = st.clock
+        if tuner_cfg:
+            st.configure_tuner(tuner_cfg)
         st.set_running(True)
         for ev in events:
             st.emit(ev)
         runs.append({
-            "name": name, "payload": payload, "start_sol": bankroll, "clock0": clock0, "model": model_json(model) if use_model else None, "events": [wire(e) for e in events],
+            "name": name, "payload": payload, "tuner": tuner_cfg, "start_sol": bankroll, "clock0": clock0, "model": model_json(model) if use_model else None, "events": [wire(e) for e in events],
             "snapshots": {k: json.loads(json.dumps(st.snapshot(k.split("@")[0], int(k.split("@")[1]) if "@" in k else DEFAULT_ROWS)))
                           for k in ("24h", "all", "all@1", "all@3", "all@100")},
             "closed": [dataclasses.asdict(c) for c in st.engine.closed],
         })
     return runs
+
+
+def lap_cases():
+    """A recording and what its repeat laps must look like (the browser build repeats it the same way)."""
+    from sniper.terminal.feeds import repeat_lap
+    events = sorted(synth.generate(3, 12, 1_000_000, 0), key=lambda e: e.t)
+    return {"events": [wire(e) for e in events], "laps": {str(n): [wire(e) for e in repeat_lap(events, n)] for n in (2, 3, 5)}}
+
+
+def fork_cases():
+    """Strategies (as settings screen payloads) and the trades Python makes with them on one market."""
+    market = sorted(synth.generate(11, 90, 1_000_000), key=lambda e: e.t)
+    payloads = {
+        "default": {"latency_ms": 300},
+        "trail+ladder": {"latency_ms": 300, "trailing_stop_pct": 12, "take_profit": 80, "ladder": [{"gain_pct": 15, "sell_pct": 40}, {"gain_pct": 40, "sell_pct": 30}]},
+        "confirm+smart": {"latency_ms": 300, "entry_mode": "confirm", "confirm_gain_pct": 6, "exit_mode": "smart"},
+        "filters": {"latency_ms": 300, "min_trades": 2, "max_entry_gain_pct": 60, "block_collapsed_creators": True, "max_creator_launches": 2, "min_liquidity_sol": 0.5},
+        "no-scan": {"latency_ms": 0, "tx_cost_sol": 0.001, "honeypot_detection": False},
+        "compounding": {"latency_ms": 300, "auto_compound": True, "max_open": 5, "size_mode": "fixed"},
+    }
+    cases = []
+    for name, payload in payloads.items():
+        engine = PaperEngine(parse_settings(payload, default_strategy()), 1.0)
+        for ev in market:
+            engine.on_event(ev)
+        cases.append({"name": name, "payload": payload, "events": [wire(e) for e in market], "expected": [dataclasses.asdict(c) for c in engine.finish().closed]})
+    sim = synth.Sim("M1", "C1", 1000)
+    slip = [sim.create(), sim.scan(1100), sim.buy(1300, 1.0), sim.buy(1500, 5.0), sim.buy(1700, 0.01)]
+    sim = synth.Sim("M1", "RUGGER", 1000)
+    launch = sim.create(dev_sol=2.0)
+    rug = [launch, sim.scan(1100), sim.sell(1300, launch.dev_tokens * 0.3, "RUGGER"), sim.sell(1400, launch.dev_tokens * 0.3, "RUGGER")]
+    hand = [
+        {"name": "order waiting to fill still checks slippage", "payload": {"latency_ms": 500, "tx_cost_sol": 0, "slippage_pct": 5}, "events": [wire(e) for e in slip], "split": 3, "expect": {"slippage": 1}},
+        {"name": "creator selling in two parts", "payload": {"latency_ms": 0, "tx_cost_sol": 0}, "events": [wire(e) for e in rug], "split": 3, "expect": {"ruggers": ["RUGGER"]}},
+    ]
+    return {"cases": cases, "hand": hand}
+
+
+@unittest.skipUnless(shutil.which("node"), "node is not installed")
+class JsFork(unittest.TestCase):
+    def test_the_browser_engine_copy_matches_the_original_and_shares_nothing(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "fork.json"
+            path.write_text(json.dumps(fork_cases()))
+            result = subprocess.run(["node", str(ROOT / "tests/js/fork.js"), str(path)], capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("ok:", result.stdout)
 
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")
@@ -276,7 +490,7 @@ class JsParity(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "cases.json"
             runs = run_cases()
-            path.write_text(json.dumps({"settings": settings_cases(), "runs": runs, "features": feature_cases(), "model": model_json(fixed_model())}))
+            path.write_text(json.dumps({"settings": settings_cases(), "runs": runs, "features": feature_cases(), "model": model_json(fixed_model()), "laps": lap_cases(), "tuner": tuner_cases()}))
             result = subprocess.run(["node", str(ROOT / "tests/js/parity.js"), str(path)], capture_output=True, text=True, timeout=120)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("ok:", result.stdout)
@@ -295,6 +509,22 @@ class JsParity(unittest.TestCase):
         # the token-row limit must be compared where it matters: more tokens than rows, and an old token still held
         self.assertTrue(any(r["snapshots"]["all@3"]["rows_total"] > 3 and len(r["snapshots"]["all@3"]["rows"]) == 3 for r in runs), "row limit never cut anything")
         self.assertTrue(any(len(r["snapshots"]["all@1"]["rows"]) > 1 for r in runs), "no older open position was ever kept past the row limit")
+        tuned = [r for r in runs if r["tuner"] and r["tuner"]["enabled"]]
+        rounds = [h for r in tuned for h in r["snapshots"]["all"]["tuner"]["history"]]
+        self.assertGreaterEqual(len(tuned), 9)
+        self.assertGreater(len(rounds), 30)
+        self.assertTrue(any(h["decision"] == "changed" for h in rounds), "no tuner run ever changed a setting")
+        self.assertTrue(any(h["decision"] == "kept" for h in rounds))
+        self.assertTrue(any(c["passed"] for h in rounds for c in h["clones"]) and any(not c["passed"] and c["changes"] for h in rounds for c in h["clones"]))
+        changed_keys = {k for h in rounds for k in h["changes"]}
+        self.assertGreaterEqual(changed_keys, {"take_profit"}, changed_keys)
+        self.assertTrue(any(l["kind"] == "tune" for r in tuned for l in r["snapshots"]["all"]["logs"]))
+        many = next(r for r in runs if r["name"] == "tuner-many-rounds")
+        self.assertEqual(len(many["snapshots"]["all"]["tuner"]["history"]), 30)
+        self.assertGreater(many["snapshots"]["all"]["tuner"]["history"][0]["round"], 30)
+        walk = next(s for s in script_cases() if s["name"] == "walks-the-target-down")
+        self.assertTrue(any(" to " in n and "auto-tune round" in n for n in walk["observed"][-1]["notes"]), "no script ever logged a setting change")
+        self.assertTrue(all(not r["snapshots"]["all"]["tuner"]["history"] for r in runs if r["tuner"] and not r["tuner"]["enabled"]))
         self.assertGreaterEqual(skips, {"max_open", "slippage", "low_liquidity", "blacklisted", "no_cash", "verdict", "no_confirmation"})
         self.assertGreaterEqual(skips, {"too_few_trades", "too_old", "chasing", "serial_creator", "collapsed_creator"}, skips)
         quiet_by_design = ("slippage-abort", "low-liquidity", "rugger-then-relaunch", "creator-sells-60-percent", "confirm-watch-expires", "confirm-needs-current-flow", "filters-with-confirm", "filter-min-trades", "filter-min-trades-boundary", "filter-serial-later-launch-ignored", "filter-token-age", "filter-no-chasing", "filter-collapsed-creator", "ladder-stop-before-any-rung", "ladder-price-falls-before-fill-small", "ladder-price-falls-before-fill-medium", "ladder-price-falls-before-fill-big")

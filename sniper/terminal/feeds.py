@@ -6,30 +6,58 @@ import asyncio
 import contextlib
 import threading
 import time
+from dataclasses import replace
 from typing import Callable
 
 from ..pump import synth
-from ..pump.events import Event
+from ..pump.events import Event, NewToken, Trade
 
 Emit = Callable[[Event], None]
 
 
-class ReplayFeed:
-    """Plays recorded events back. Engine time is event time; `speed` only changes how long we sleep."""
+def repeat_lap(events: list[Event], lap: int) -> list[Event]:
+    """Lap `lap` of a recording: the same prices, moved later in time, with new mint and wallet names (so the bot sees a fresh-looking market)."""
+    span = events[-1].t - events[0].t + 60_000
+    shift, tag = (lap - 1) * span, f"~{lap}"
+    out: list[Event] = []
+    for e in events:
+        changes: dict = {"t": e.t + shift, "mint": e.mint + tag}
+        if isinstance(e, NewToken):
+            changes["creator"] = e.creator + tag
+        elif isinstance(e, Trade):
+            changes["trader"] = e.trader + tag
+        out.append(replace(e, **changes))
+    return out
 
-    def __init__(self, events: list[Event], speed: float = 1.0, max_gap_s: float = 1.0, sleep: Callable[[float], None] = time.sleep):
+
+class ReplayFeed:
+    """Plays recorded events back. Engine time is event time; `speed` only changes how long we sleep.
+
+    With `loop=True` the recording plays again and again (see `repeat_lap`) instead of ending; `on_lap(n)` is told when a new lap starts."""
+
+    def __init__(self, events: list[Event], speed: float = 1.0, max_gap_s: float = 1.0, sleep: Callable[[float], None] = time.sleep, loop: bool = False):
         self.events = sorted(events, key=lambda e: e.t)
-        self.speed, self.max_gap_s, self._sleep = speed, max_gap_s, sleep
+        self.speed, self.max_gap_s, self._sleep, self.loop = speed, max_gap_s, sleep, loop
+        self.on_lap: Callable[[int], None] | None = None
 
     def run(self, emit: Emit, stop: threading.Event) -> None:
-        prev = None
-        for ev in self.events:
-            if stop.is_set():
+        lap = 1
+        while True:
+            events = self.events if lap == 1 else repeat_lap(self.events, lap)
+            prev = None
+            for ev in events:
+                if stop.is_set():
+                    return
+                if prev is not None and ev.t > prev:
+                    self._sleep(min((ev.t - prev) / 1000 / self.speed, self.max_gap_s))
+                prev = ev.t
+                emit(ev)
+            if not self.loop or not self.events or stop.is_set():
                 return
-            if prev is not None and ev.t > prev:
-                self._sleep(min((ev.t - prev) / 1000 / self.speed, self.max_gap_s))
-            prev = ev.t
-            emit(ev)
+            lap += 1
+            if self.on_lap:
+                self.on_lap(lap)
+            self._sleep(self.max_gap_s)  # the 60 s gap between laps, capped like any other quiet stretch
 
 
 class DemoFeed:
@@ -82,6 +110,9 @@ class TeeSink:
 
 
 def start_feed(feed, state, stop: threading.Event) -> threading.Thread:
+    if hasattr(feed, "on_lap"):
+        feed.on_lap = state.set_lap
+
     def target() -> None:
         try:
             feed.run(state.emit, stop)

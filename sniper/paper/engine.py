@@ -12,6 +12,7 @@ Treat results as an optimistic upper bound.
 
 from __future__ import annotations
 
+import copy
 import math
 import random
 from collections import Counter
@@ -114,6 +115,10 @@ class EngineResult:
     launches_seen: int = 0
 
 
+def _copy_tape(t: TokenTape) -> TokenTape:
+    return TokenTape(t.launch_t, t.dev_pct, t.launch_price, list(t.ts), list(t.vs), list(t.vt), t.peak_price, t.peak_t)
+
+
 class PaperEngine:
     def __init__(self, strategy: Strategy, start_sol: float = 1.0, on_note: Callable[[int, str, str, str], None] | None = None, model_policy=None):
         self.s = strategy
@@ -138,6 +143,22 @@ class PaperEngine:
         self.equity_curve = [start_sol]
         self.skipped: Counter = Counter()
         self.last_t = 0
+
+    def fork(self, strategy: Strategy | None = None) -> "PaperEngine":
+        """An independent copy that carries on from this exact state (cash, open positions, price history, creator history)
+        under `strategy`, and shares nothing mutable with the original. It makes no notes and starts with this engine's trade list."""
+        clone = copy.copy(self)
+        clone.s = strategy if strategy is not None else self.s
+        clone.on_note = None
+        clone.tapes = {m: _copy_tape(t) for m, t in self.tapes.items()}
+        clone.curve, clone.launch, clone.scans = dict(self.curve), dict(self.launch), dict(self.scans)  # their values are never modified in place
+        clone.pending, clone.watch, clone.pending_state = dict(self.pending), dict(self.watch), dict(self.pending_state)
+        clone.creator_sold, clone.known_ruggers = dict(self.creator_sold), set(self.known_ruggers)
+        clone.creator_launches = {c: list(v) for c, v in self.creator_launches.items()}
+        clone.positions = {m: copy.copy(p) for m, p in self.positions.items()}
+        clone.closed, clone.equity_curve, clone.skipped = list(self.closed), list(self.equity_curve), Counter(self.skipped)
+        clone.rng = copy.deepcopy(self.rng)
+        return clone
 
     def _note(self, t: int, kind: str, mint: str, text: str) -> None:
         if self.on_note:

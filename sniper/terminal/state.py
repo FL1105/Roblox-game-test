@@ -10,6 +10,7 @@ from collections import OrderedDict, deque
 from dataclasses import replace
 
 from ..paper.engine import ClosedTrade, PaperEngine, Strategy
+from ..paper.tuner import BY_KEY, Tuner
 from ..pump.curve import VIRTUAL_START_SOL, quote_sell
 from ..pump.events import TOTAL_SUPPLY, Event, NewToken, ScanNote, Trade
 
@@ -26,6 +27,11 @@ def clamp_rows(value) -> int:
         return DEFAULT_ROWS
     return max(1, min(n, MAX_ROWS))
 ALLOWED_VERDICTS = ("PASS", "CAUTION", "AVOID")
+
+
+def num(v: float) -> str:
+    """A number as short text: 30.0 -> '30', 32.5 -> '32.5'."""
+    return format(float(v), ".6g")
 
 
 def default_strategy() -> Strategy:
@@ -215,6 +221,8 @@ class TerminalState:
         self.strategy = strategy or default_strategy()
         self.running = False
         self.feed_status = "starting"  # starting | live | finished | error: <msg>
+        self.lap = 1  # which pass over a looping recording the feed is on
+        self.tuner = Tuner()  # clones that trade the same tokens with nudged settings; see paper/tuner.py
         self._log_size = log_size
         self._reset_locked()
 
@@ -229,6 +237,7 @@ class TerminalState:
         self.clock = 0
         self.engine = PaperEngine(self.strategy, self.start_sol, on_note=self._on_note, model_policy=self.model_policy)
         self.engine.enabled = self.running
+        self.tuner.clear()
 
     def reset(self, start_sol: float | None = None) -> None:
         with self.lock:
@@ -243,13 +252,22 @@ class TerminalState:
         with self.lock:
             self.running = running
             self.engine.enabled = running
+            self.tuner.clear()  # clones only make sense while the bot is trading: start a fresh round whenever that changes
             self._log(self.clock or int(time.time() * 1000), "info", "", "bot started" if running else "bot stopped: no new positions will open")
 
     def update_settings(self, data: dict) -> dict:
         with self.lock:
             self.strategy = parse_settings(data, self.strategy, has_model=self.model_policy is not None)
             self.engine.s = self.strategy
+            self.tuner.clear()  # the bot's settings are the centre the clones nudge around
             return settings_dict(self.strategy)
+
+    def set_lap(self, n: int) -> None:
+        with self.lock:
+            self.lap = n
+            self.tuner.paused = "repeat lap: the bot has already seen this data" if n > 1 else None
+            self.tuner.clear()
+            self._log(self.clock or int(time.time() * 1000), "info", "", f"lap {n}: the recording plays again under new names. The bot has already seen these launches, so results from repeats are not new evidence")
 
     def set_feed_status(self, status: str) -> None:
         with self.lock:
@@ -274,6 +292,33 @@ class TerminalState:
             elif isinstance(ev, ScanNote) and ev.mint in self.tokens:
                 self._log(ev.t, "scan", ev.mint, f"{self.tokens[ev.mint]['symbol']} scanned: {ev.verdict}" + (f" ({ev.summary})" if ev.summary else ""))
             self.engine.on_event(ev)
+            self._tune(ev)
+
+    def configure_tuner(self, data: dict) -> dict:
+        with self.lock:
+            self.tuner.configure(data)
+            c = self.tuner.cfg
+            self._log(self.clock or int(time.time() * 1000), "info", "", "auto-tune " + (f"on ({c.clones} clones, {c.round_launches} launches per round)" if c.enabled else "off"))
+            return self.tuner.snapshot(self.engine)
+
+    def _tune(self, ev: Event) -> None:
+        """Let the clones see the event; when a round ends, move the bot's settings if the clones earned it."""
+        if not self.running:
+            return
+        verdict = self.tuner.feed(ev, self.engine)
+        if verdict is None:
+            return
+        if verdict["changes"]:
+            try:
+                self.strategy = parse_settings({k: new for k, (old, new) in verdict["changes"].items()}, self.strategy, has_model=self.model_policy is not None)
+                self.engine.s = self.strategy
+            except ValueError as e:  # the tuner's limits sit inside the settings screen's, so this should never happen
+                verdict.update(decision="kept", reason=f"change refused: {e}", changes={})
+        if verdict["changes"]:
+            moves = ", ".join(f"{BY_KEY[k].label} {num(old)} to {num(new)}" for k, (old, new) in verdict["changes"].items())
+            self._log(ev.t, "tune", "", f"auto-tune round {verdict['round']}: {moves} ({verdict['reason']})")
+        else:
+            self._log(ev.t, "tune", "", f"auto-tune round {verdict['round']}: settings kept ({verdict['reason']})")
 
     def _on_note(self, t: int, kind: str, mint: str, text: str) -> None:
         sym = self.tokens.get(mint, {}).get("symbol", mint[:6])
@@ -302,6 +347,8 @@ class TerminalState:
                 "feed_status": self.feed_status,
                 "clock": self.clock,
                 "events_seen": self.events_seen,
+                "lap": self.lap,
+                "tuner": self.tuner.snapshot(self.engine),
                 "paper": {"start": self.start_sol, "equity": equity, "cash": e.cash, "open": len(e.positions)},
                 "settings": settings_dict(self.strategy),
                 "presets": PRESETS,

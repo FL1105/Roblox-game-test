@@ -33,7 +33,7 @@ button,input,select{font:inherit;color:inherit}
 .brand h1{margin:0;font-size:18px;letter-spacing:.2px}
 .brand small{display:block;font:10.5px var(--mono);letter-spacing:.2em;color:var(--dim);margin-top:2px}
 .nav{display:flex;gap:4px;padding:5px;border:1px solid var(--line);border-radius:14px;background:var(--card2)}
-.nav button{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;border:1px solid transparent;background:none;color:var(--muted);cursor:pointer}
+.nav button{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid transparent;background:none;color:var(--muted);cursor:pointer}
 .nav button:hover{color:var(--text)}
 .nav button.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent);background:color-mix(in srgb,var(--accent) 9%,transparent)}
 .badge{font:11px var(--mono);padding:1px 7px;border-radius:99px;background:#17252d;color:var(--muted)}
@@ -119,6 +119,7 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
 .logline .t{color:var(--dim)}.logline .k{letter-spacing:.1em;font-size:10.5px;padding-top:2px;color:var(--dim)}
 .logline.entry .k,.logline.entry .x{color:var(--good)}.logline.exit .k{color:var(--amber)}
 .logline.skip .x,.logline.launch .x{color:var(--muted)}
+.logline.tune .k{color:var(--accent)}
 .prof{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
 .kv{display:grid;grid-template-columns:1fr auto;gap:8px 16px;font-size:13px}.kv span:nth-child(odd){color:var(--muted)}.kv span:nth-child(even){font-family:var(--mono);text-align:right}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:12px;background:#1a0f12;border:1px solid color-mix(in srgb,var(--red) 55%,transparent);color:#ff9aa5;font:12.5px var(--mono);display:none;z-index:9}
@@ -170,6 +171,75 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
 .toast{z-index:40}
 @media (max-width:700px){.fgrid{grid-template-columns:1fr}}
 @media (max-width:520px){.top{padding:12px}.nav{width:100%}.nav button{flex:1;justify-content:center;padding:8px 6px;gap:6px;min-width:0}.pill{width:100%;justify-content:center}.icons{width:100%;justify-content:space-between}.brand h1{font-size:16px}.mhead,.mbody,.mfoot{padding-inline:14px}.tile .v{font-size:17px}}
+/* auto-tune */
+.nav button[hidden]{display:none}
+.tune{display:flex;flex-direction:column;gap:14px}
+.tune .lead{margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.55}
+.tune .lead b{color:var(--text)}
+.tune .limits{margin:12px 0 0}
+.tune .notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:var(--sans);font-size:13px;letter-spacing:0;line-height:1.45}
+.tune .notice[hidden]{display:none}
+.tune .notice.pause{border-color:color-mix(in srgb,var(--amber) 60%,transparent);background:color-mix(in srgb,var(--amber) 14%,transparent);font-weight:600}
+.tune .notes{display:flex;flex-direction:column;gap:8px}
+.tune .notes:empty{display:none}
+.tsw{display:inline-flex;align-items:center;gap:10px;padding:5px 14px 5px 6px;border-radius:99px;border:1px solid var(--line2);background:var(--card2);color:var(--muted);font:600 11px var(--mono);letter-spacing:.14em;cursor:pointer}
+.tsw i{position:relative;width:40px;height:22px;border-radius:99px;background:#1b2a32;transition:.15s;flex:none}
+.tsw i::after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:.15s}
+.tsw[aria-checked="true"]{color:var(--good);border-color:color-mix(in srgb,var(--good) 55%,transparent);background:color-mix(in srgb,var(--good) 10%,transparent)}
+.tsw[aria-checked="true"] i{background:var(--accent)}.tsw[aria-checked="true"] i::after{left:21px;background:var(--accent-ink)}
+.tune .field input.inp,.tune .field select.inp{width:100%}
+.tune .field label.t{cursor:pointer}
+.tune .fnote{margin:12px 2px 0;font-size:12px;color:var(--dim)}
+.plist{display:flex;flex-direction:column}
+.prow{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:4px 16px;align-items:center;padding:10px 4px;border-bottom:1px solid #0f1a20}
+.prow:last-child{border-bottom:0}
+.prow input{width:18px;height:18px;margin:0;accent-color:var(--accent);cursor:pointer}
+.prow .pl{display:flex;flex-direction:column;min-width:0}.prow .pl label{cursor:pointer;font-weight:600}
+.prow .pn{font-size:11.5px;color:var(--amber)}
+.prow .pv{font:600 13px var(--mono);text-align:right;min-width:78px}
+.prow .pr{font:12px var(--mono);color:var(--dim);text-align:right;min-width:92px}
+.prow.off .pl label,.prow.off .pv,.prow.off .pr{opacity:.45}
+.bar{height:10px;border-radius:99px;background:#101c23;border:1px solid var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;border-radius:99px;background:var(--accent);transition:width .5s}
+.barline{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;font:12px var(--mono);color:var(--muted)}
+.barline b{color:var(--text);font-weight:600}
+.tune .tiles{margin:14px 0}
+.tune .tiles .tile .v{font-size:18px}
+.ctr{display:grid;grid-template-columns:38px minmax(230px,1fr) 62px 96px 96px;gap:10px;align-items:start;padding:10px 4px;min-width:560px}
+.ctr.thead{position:static;align-items:center;background:none;padding-top:4px;padding-bottom:8px}
+.ctr:not(.thead){border-bottom:1px solid #0f1a20}
+.ctr:not(.thead):last-child{border-bottom:0}
+.ctr.h7{grid-template-columns:38px minmax(230px,1fr) 62px 84px 100px 112px 60px;min-width:740px}
+.ctr .tries{font-size:12.5px;line-height:1.5;overflow-wrap:anywhere}.ctr .tries .tp{white-space:nowrap}
+.ctr .r{text-align:right}
+.hist{display:flex;flex-direction:column;gap:12px}
+.round{border:1px solid var(--line);border-radius:14px;background:var(--card2);padding:13px 14px}
+.round .rh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.round .rh b{font-size:14px}
+.round .why{margin:8px 0 0;color:var(--muted);font-size:13px}
+.round ul{margin:8px 0 0;padding-left:18px;font:12.5px var(--mono)}
+.round li{margin:2px 0}
+.round details{margin-top:10px}
+.round summary{cursor:pointer;color:var(--muted);font-size:12.5px;padding:4px 0;width:max-content;max-width:100%}
+.round summary:hover{color:var(--accent)}
+.round .explain{margin:8px 0 6px;font-size:12px;color:var(--dim);line-height:1.5}
+.tunebtn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin-top:12px;padding:9px 12px;border-radius:12px;border:1px solid var(--line2);background:var(--card2);color:var(--muted);font:11.5px var(--mono);cursor:pointer;text-align:left}
+.tunebtn:hover{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+.tunebtn[hidden]{display:none}
+.tunebtn.on b{color:var(--good)}.tunebtn b{font-weight:600;color:var(--text)}
+.ctr .cm{display:contents}
+.scroll[hidden]{display:none}
+@media (max-width:620px){
+  .ctr,.ctr.h7{grid-template-columns:26px minmax(0,1fr);gap:6px 10px;min-width:0}
+  .ctr.thead{display:none}
+  .ctr .cm{display:flex;flex-wrap:wrap;gap:4px 20px;grid-column:2}
+  .ctr .cm>[data-l]{text-align:left}
+  .ctr .cm>[data-l]::before{content:attr(data-l);display:block;font:9.5px var(--mono);letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+}
+@media (max-width:520px){
+  .prow{grid-template-columns:auto auto minmax(0,1fr)}.prow .pl{grid-column:2/-1}.prow .pv{grid-column:2;text-align:left;min-width:0}.prow .pr{grid-column:3;text-align:left;min-width:0}
+  .nav{flex-wrap:wrap}.nav button{flex:1 1 40%}
+}
 </style>
 </head>
 <body>
@@ -183,6 +253,7 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
       <button data-view="dashboard" class="on"><span data-ic="chart"></span>Dashboard</button>
       <button data-view="logs"><span data-ic="term"></span>Logs <span class="badge" id="logcount">0</span></button>
       <button data-view="profile"><span data-ic="user"></span>Profile</button>
+      <button data-view="tune" id="nav-tune" hidden><span data-ic="tune"></span>Auto-tune</button>
     </nav>
     <div class="spacer"></div>
     <select class="inp" id="sourcesel" aria-label="Data source" hidden style="width:auto;max-width:190px;text-overflow:ellipsis"></select>
@@ -221,6 +292,7 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
         <label class="lbl" for="stop_loss">Stop loss (%)</label>
         <input class="inp" id="stop_loss" inputmode="decimal">
         <button class="btn ghost adv" id="advbtn"><span data-ic="sliders"></span>Advanced Settings</button>
+        <button class="tunebtn" id="tunestat" hidden><span id="tunestat-text"></span><span aria-hidden="true">&rsaquo;</span></button>
       </section>
 
       <section class="card">
@@ -256,6 +328,69 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
       </div>
 
       <div class="view" id="view-logs"><div class="card main"><div class="logs" id="logs"></div></div></div>
+
+      <div class="view" id="view-tune">
+        <div class="tune">
+          <section class="card hl">
+            <div class="cardhead"><h2><span data-ic="tune"></span>Auto-tune</h2>
+              <button type="button" class="tsw" id="tuneon" role="switch" aria-checked="false" aria-label="Auto-tune switch"><i></i><span id="tuneonlbl">OFF</span></button></div>
+            <p class="lead"><b>The bot tweaks its own numbers over time.</b> While it is running, a few <b>clones</b> of it trade the exact same tokens on paper, each with its settings nudged a little (a bit higher take profit here, a tighter stop loss there). After every <b>round</b> of launches the clones are compared with the real bot, launch by launch. If some of them clearly did better than luck would explain, the bot moves part of the way toward them. Then a new round starts around the new numbers.</p>
+            <div class="info limits"><b>What it cannot do.</b> It cannot create an edge that is not there: if no setting works, it mostly stays put (and now and then follows a lucky streak). On simulated (made-up) data it only learns the made-up market. When a recording plays again from the start it pauses, because tuning on data the bot has already seen would only be memorising. Paper only: nothing here touches a wallet.</div>
+            <div class="notes" style="margin-top:12px">
+              <div class="notice pause" id="tune-paused" role="status" hidden></div>
+              <div class="notice" id="tune-stopped" role="status" hidden><span>Start the bot &mdash; clones only run while it trades.</span><button type="button" class="sm" id="tunestart">Start bot</button></div>
+              <div class="notice" id="tune-sim" role="status" hidden>This is the demo market. Auto-tune can only learn this made-up market, so its changes say nothing about real trading.</div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="cardhead"><h2><span data-ic="sliders"></span>How it tunes</h2></div>
+            <div class="fgrid">
+              <div class="field"><label class="t" for="tune_clones">Clones</label>
+                <input class="inp" id="tune_clones" type="number" min="2" max="8" step="1" inputmode="numeric" aria-label="Tuner clones">
+                <div class="h">How many copies of the bot run side by side (2 to 8). More clones try more ideas, but the bar for proof goes up.</div></div>
+              <div class="field"><label class="t" for="tune_round">Launches per round</label>
+                <input class="inp" id="tune_round" type="number" min="20" max="1000" step="1" inputmode="numeric" aria-label="Tuner launches per round">
+                <div class="h">How many new tokens to watch before judging the clones (20 to 1000). Longer rounds are slower but harder to fool.</div></div>
+              <div class="field"><label class="t" for="tune_caution">Caution</label>
+                <select class="inp" id="tune_caution" aria-label="Tuner caution"></select>
+                <div class="h">How sure it must be that a clone really beat the bot, and was not just lucky. Higher means fewer changes.</div></div>
+              <div class="field"><label class="t" for="tune_blend">Step size</label>
+                <input class="inp" id="tune_blend" type="number" min="0.1" max="1" step="0.1" inputmode="decimal" aria-label="Tuner step size">
+                <div class="h">How far the bot moves toward the winning clones; 0.5 = halfway. (0.1 to 1)</div></div>
+            </div>
+            <p class="fnote">Changing anything here, or in the bot's settings, starts a fresh round.</p>
+          </section>
+
+          <section class="card">
+            <div class="cardhead"><h2><span data-ic="gear"></span>What it may change</h2></div>
+            <p class="lead" style="margin-bottom:6px">Untick a setting to keep it fixed. Each one can only move inside its allowed range.</p>
+            <div class="plist" id="tuneparams"></div>
+          </section>
+
+          <section class="card">
+            <div class="cardhead"><h2><span data-ic="bot"></span>This round</h2><span class="chip" id="roundchip">NO ROUND</span></div>
+            <p class="lead" id="roundmsg" style="margin:0"></p>
+            <div id="roundlive" hidden>
+              <div class="barline"><span id="roundtxt"></span><span id="roundpct" class="mono"></span></div>
+              <div class="bar" id="roundbar" role="progressbar" aria-label="Round progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="roundfill"></i></div>
+              <div class="tiles">
+                <div class="tile"><div class="v" id="bot-mean">—</div><div class="k">BOT AVG RETURN PER LAUNCH</div></div>
+                <div class="tile"><div class="v" id="bot-trades">0</div><div class="k">BOT TRADES THIS ROUND</div></div>
+              </div>
+              <div class="scroll" id="clonetable">
+                <div class="ctr thead"><span>#</span><span>TRIES</span><span class="r">TRADES</span><span class="r">AVG RETURN</span><span class="r">VS BOT</span></div>
+                <div id="clonerows"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="cardhead"><h2><span data-ic="term"></span>Past rounds</h2><span class="badge" id="histcount">0</span></div>
+            <div class="hist" id="tunehist"></div>
+          </section>
+        </div>
+      </div>
 
       <div class="view" id="view-profile">
         <div class="prof">
@@ -299,7 +434,8 @@ const IC = {
   home:'<path d="M4 11l8-7 8 7v9H4z"/>', palette:'<path d="M12 3a9 9 0 100 18c1.5 0 2-1 1.5-2s0-2 1.5-2h2a3 3 0 003-3c0-5-4-11-8-11z"/><circle cx="8" cy="11" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16" cy="11" r="1"/>',
   refresh:'<path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/>', full:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', wallet:'<path d="M3 7h16a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2zM3 7l2-3h12M16 14h2"/>',
   bot:'<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4M9 13h.01M15 13h.01M3 13v3M21 13v3"/>', play:'<path d="M7 5l12 7-12 7z" fill="currentColor"/>', stopsq:'<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>',
-  sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/>', gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>', x:'<path d="M6 6l12 12M18 6L6 18"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', brain:'<path d="M9 4a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V4a3 3 0 00-3 0zM15 4a3 3 0 013 3 3 3 0 012 5 3 3 0 01-2 5 3 3 0 01-6 0"/>', save:'<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>', search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'
+  sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/>', gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>', x:'<path d="M6 6l12 12M18 6L6 18"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', brain:'<path d="M9 4a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V4a3 3 0 00-3 0zM15 4a3 3 0 013 3 3 3 0 012 5 3 3 0 01-2 5 3 3 0 01-6 0"/>', save:'<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>', search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',
+  tune:'<path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="4"/><path d="M5.6 5.6l2 2M16.4 16.4l2 2M5.6 18.4l2-2M16.4 7.6l2-2"/>'
 };
 const svg = (name, size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[name]}</svg>`;
 document.querySelectorAll("[data-ic]").forEach(n => { n.innerHTML = svg(n.dataset.ic, +(n.dataset.size || 18)); n.style.display = "inline-flex"; });
@@ -309,6 +445,7 @@ function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.
 const fmt = (x, d = 3) => (x == null ? "—" : Number(x).toFixed(d));
 const signed = (x, d = 3) => (x == null ? "—" : (x >= 0 ? "+" : "") + Number(x).toFixed(d));
 const hhmmss = (ms) => ms ? new Date(ms).toLocaleTimeString([], {hour12: false}) : "—";
+const REAL_NOTE = $("realnote").textContent;
 const MINT_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 let last = null, settingsLoaded = false, bankrollLoaded = false, view = "dashboard";
@@ -590,6 +727,185 @@ function renderLogs(logs) {
 
 function kv(host, pairs) { host.replaceChildren(); pairs.forEach(([k, v]) => host.append(el("span", "", k), el("span", "", v))); }
 
+/* ---- Auto-tune: clones nudge the bot's settings. Everything dynamic goes in through el()/textContent. ---- */
+const num = (x) => x == null ? "—" : String(+Number(x).toFixed(3));
+const unitOf = (label) => { const m = /\(([^)]*)\)\s*$/.exec(label || ""); return m ? m[1] : ""; };
+const shortLabel = (label) => String(label || "").replace(/\s*\([^)]*\)\s*$/, "");
+const withUnit = (v, label) => { const u = unitOf(label); return num(v) + (u === "%" ? "%" : u ? " " + u : ""); };
+const pctText = (x) => x == null ? "—" : signed(x, 2) + "%";
+const toneOf = (x) => x == null || Math.abs(x) < 0.005 ? "mut" : x > 0 ? "pos" : "neg";
+const put = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+const NOT_USED = {confirm_gain_pct: "not used: your entry mode is not Confirm", max_entry_gain_pct: "not used: the don't-chase filter is off"};  // the rest depend on the exit mode
+const tuneKeys = {}, openRounds = new Set(), paramRows = {};
+let tuneBusy = 0, tuneEpoch = 0, tuneChain = Promise.resolve(), tuneFailed = false, cautionSig = "";
+
+/* a change to the tuner settings: posts are queued so quick clicks can't overtake each other, and the controls are
+   only re-synced from the server once the queue is empty (otherwise a poll that started earlier would flash old values) */
+function tunePost(body) {
+  tuneBusy++;
+  tuneChain = tuneChain.then(async () => {
+    try { const j = await api("/api/tuner", body); if (j.tuner && last) last.tuner = j.tuner; }
+    catch (e) { tuneFailed = true; toast(e.message); }
+  }).then(() => {
+    tuneBusy--; tuneEpoch++;
+    if (!tuneBusy && last) { const force = tuneFailed; tuneFailed = false; renderTuneAll(last, force); }
+    poll();
+  });
+  return tuneChain;
+}
+const curTuner = () => last && last.tuner && typeof last.tuner === "object" ? last.tuner : null;
+$("tuneon").onclick = () => { if (curTuner()) tunePost({enabled: $("tuneon").getAttribute("aria-checked") !== "true"}); };
+$("tunestart").onclick = () => setRunning(true);
+[["clones", "tune_clones"], ["round_launches", "tune_round"], ["caution", "tune_caution"], ["blend", "tune_blend"]].forEach(([k, id]) => $(id).addEventListener("change", () => {
+  const t = curTuner(); if (!t) return;
+  const raw = $(id).value, v = k === "caution" ? raw : raw.trim() === "" ? null : Number(raw);
+  if (v === (t.config || {})[k]) return;  // nothing changed: don't restart the round for nothing
+  tunePost({[k]: v});
+}));
+$("tunestat").onclick = () => { show("tune"); last && render(last); };
+
+function syncTuneControls(t, force) {
+  const c = t.config || {};
+  const sel = $("tune_caution"), cs = t.cautions || {}, sig = JSON.stringify(cs);
+  if (sig !== cautionSig) {  // the options come from the server so the percentages can never disagree with it
+    cautionSig = sig; sel.replaceChildren();
+    for (const [k, p] of Object.entries(cs)) { const o = el("option", "", `${cap(k)} ${p}%`); o.value = k; sel.append(o); }
+  }
+  const put2 = (inp, v) => { if (v != null && (force || document.activeElement !== inp) && String(inp.value) !== String(v)) inp.value = v; };  // never fight the person typing
+  put2($("tune_clones"), c.clones); put2($("tune_round"), c.round_launches); put2(sel, c.caution); put2($("tune_blend"), c.blend);
+}
+
+function buildParams(t) {
+  const host = $("tuneparams"), ps = t.params || [], sig = ps.map(p => p.key).join();
+  if (host.dataset.sig === sig) return;
+  host.dataset.sig = sig; host.replaceChildren(); Object.keys(paramRows).forEach(k => delete paramRows[k]);
+  for (const p of ps) {
+    const row = el("div", "prow"), cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "tp-" + p.key;
+    const pl = el("div", "pl"), name = el("label"), note = el("span", "pn"), val = el("span", "pv"), rng = el("span", "pr");
+    name.htmlFor = cb.id; pl.append(name, note); row.append(cb, pl, val, rng); host.append(row);
+    cb.onchange = () => tunePost({params: Object.keys(paramRows).filter(k => paramRows[k].cb.checked)});
+    paramRows[p.key] = {row, cb, name, note, val, rng};
+  }
+}
+function renderParams(t) {
+  buildParams(t);
+  const chosen = new Set((t.config || {}).params || []);
+  for (const p of t.params || []) {
+    const r = paramRows[p.key]; if (!r) continue;
+    r.cb.checked = chosen.has(p.key); r.cb.setAttribute("aria-label", `Tune ${p.label}`);
+    // the server reports `active` as "ticked AND relevant", so only a ticked row can honestly be called unused (an unticked one just shows as unticked)
+    const unused = !p.active && chosen.has(p.key);
+    put(r.name, p.label); r.row.classList.toggle("off", unused);
+    r.note.hidden = !unused; put(r.note, unused ? NOT_USED[p.key] || "not used by your current exit mode" : "");
+    put(r.val, "now " + (p.value >= 100000 ? "off" : withUnit(p.value, p.label))); put(r.rng, `range ${num(p.lo)}–${num(p.hi)}${unitOf(p.label) === "%" ? "%" : ""}`);
+  }
+}
+
+const cell = (label, text, cls) => { const c = el("span", cls, text); c.dataset.l = label; return c; };  // the label shows only on narrow screens, where the table header is hidden
+/* "Take profit 33% (bot: 30%) · Stop loss 17%" */
+function triesEl(changes, pmap, showBot) {
+  const keys = Object.keys(changes || {});
+  if (!keys.length) return el("span", "mut", "same as bot");
+  const box = el("span", "");
+  keys.forEach((k, i) => {
+    const p = pmap[k] || {label: k};
+    if (i) box.append(document.createTextNode(" · "));
+    const part = el("span", "tp", `${shortLabel(p.label)} ${withUnit(changes[k], p.label)}`);
+    if (showBot && p.value != null) part.append(el("span", "mut", ` (bot: ${withUnit(p.value, p.label)})`));
+    box.append(part);
+  });
+  return box;
+}
+
+function renderRound(s, t) {
+  const c = t.config || {}, R = c.round_launches || 0, prog = t.progress || 0, live = !!(t.enabled && !t.paused && s.running);
+  const msg = !t.enabled ? "Auto-tune is off. Switch it on above and the bot will start trying small changes on clones of itself."
+    : t.paused ? "Paused: no clones are running." : !s.running ? "Waiting for the bot to start. Clones only run while it trades." : "";
+  put($("roundmsg"), msg); $("roundmsg").hidden = !msg; $("roundlive").hidden = !live;
+  const starting = live && !(t.clones || []).length, n = starting ? (t.round || 0) + 1 : t.round;
+  const chip = $("roundchip");
+  put(chip, !t.enabled ? "OFF" : t.paused ? "PAUSED" : !s.running ? "WAITING" : "ROUND " + n); chip.className = "chip" + (live ? " g" : t.paused ? " a" : "");
+  if (!live) { tuneKeys.clones = ""; return; }
+  const frac = R ? Math.min(100, prog / R * 100) : 0;
+  put($("roundtxt"), starting ? `Round ${n} starts at the next launch` : `Round ${n} · ${prog} of ${R} launches`); put($("roundpct"), Math.round(frac) + "%");
+  $("roundfill").style.width = frac + "%"; $("roundbar").setAttribute("aria-valuenow", String(Math.round(frac)));
+  put($("bot-mean"), prog ? pctText(t.bot_mean) : "—"); $("bot-mean").className = "v " + (prog ? toneOf(t.bot_mean) : "mut"); put($("bot-trades"), String(t.bot_trades || 0));
+  $("clonetable").hidden = !(t.clones || []).length;
+  const key = JSON.stringify([t.clones, t.params && t.params.map(p => [p.key, p.label, p.value]), prog]);
+  if (tuneKeys.clones === key) return; tuneKeys.clones = key;
+  const pmap = Object.fromEntries((t.params || []).map(p => [p.key, p])), host = $("clonerows"); host.replaceChildren();
+  for (const k of t.clones || []) {
+    const row = el("div", "ctr"), tries = el("div", "tries"); tries.append(triesEl(k.changes, pmap, true));
+    const cm = el("div", "cm");
+    cm.append(cell("Trades", String(k.trades), "mono r"), cell("Avg return", prog ? pctText(k.mean) : "—", "mono r " + (prog ? toneOf(k.mean) : "mut")), cell("Vs bot", prog ? pctText(k.delta) : "—", "mono r " + (prog ? toneOf(k.delta) : "mut")));
+    row.append(el("span", "mono mut", String(k.id)), tries, cm);
+    host.append(row);
+  }
+}
+
+function roundBox(h, pmap) {
+  const changed = h.decision === "changed", box = el("div", "round"), head = el("div", "rh");
+  box.dataset.round = h.round;
+  head.append(el("b", "", `Round ${h.round}`), el("span", "chip" + (changed ? " g" : ""), changed ? "CHANGED" : "KEPT"),
+    el("span", "mono mut", `${hhmmss(h.t)} · ${h.launches} launches · bot ${pctText(h.bot_mean)} on average, ${h.bot_trades} trade${h.bot_trades === 1 ? "" : "s"}`));
+  box.append(head, el("p", "why", h.reason || ""));
+  const moves = Object.entries(h.changes || {});
+  if (changed && moves.length) {
+    const ul = el("ul");
+    for (const [k, [from, to]] of moves) { const p = pmap[k] || {label: k}; ul.append(el("li", "", `${shortLabel(p.label)}: ${withUnit(from, p.label)} → ${withUnit(to, p.label)}`)); }
+    box.append(ul);
+  }
+  const cl = h.clones || [], det = document.createElement("details");
+  det.open = openRounds.has(h.round); det.addEventListener("toggle", () => { det.open ? openRounds.add(h.round) : openRounds.delete(h.round); });
+  det.append(el("summary", "", `Clone results (${cl.length})`),
+    el("p", "explain", "Lower bound is the worst gain over the bot that is still plausible once luck is allowed for. A clone only counts if it gained on average, its lower bound is above zero, and it acted differently from the bot on at least 5 launches."));
+  const sc = el("div", "scroll"), hd = el("div", "ctr h7 thead");
+  ["#", "TRIES", "TRADES", "AVG", "LOWER BOUND", "DIFFERED ON", "PASSED"].forEach((x, i) => hd.append(el("span", i > 1 ? "r" : "", x)));
+  sc.append(hd);
+  for (const k of cl) {
+    const row = el("div", "ctr h7"), tries = el("div", "tries"); tries.append(triesEl(k.changes, pmap, false));
+    const cm = el("div", "cm");
+    cm.append(cell("Trades", String(k.trades), "mono r"), cell("Avg", pctText(k.mean), "mono r " + toneOf(k.mean)), cell("Lower bound", pctText(k.lcb), "mono r " + toneOf(k.lcb)),
+      cell("Differed on", `${k.differing} launches`, "mono r"), cell("Passed", k.passed ? "yes" : "no", "mono r " + (k.passed ? "pos" : "mut")));
+    row.append(el("span", "mono mut", String(k.id)), tries, cm);
+    sc.append(row);
+  }
+  det.append(sc); box.append(det);
+  return box;
+}
+function renderHistory(t) {
+  const hist = Array.isArray(t.history) ? t.history : [], host = $("tunehist"), pmap = Object.fromEntries((t.params || []).map(p => [p.key, p]));
+  put($("histcount"), String(hist.length)); host.replaceChildren();
+  if (!hist.length) { const none = el("p", "mut", "No rounds finished yet"); none.style.margin = "0"; host.append(none); return; }
+  for (const h of hist) host.append(roundBox(h, pmap));
+}
+
+function renderTune(s, force) {
+  const t = s.tuner, c = t.config || {};
+  syncTuneControls(t, force);
+  const on = !!t.enabled, sw = $("tuneon");
+  sw.setAttribute("aria-checked", on ? "true" : "false"); put($("tuneonlbl"), on ? "ON" : "OFF");
+  const pz = $("tune-paused"); pz.hidden = !t.paused; if (t.paused) put(pz, `Paused: ${t.paused}. Tuning on repeats would only memorise them.`);
+  $("tune-stopped").hidden = !(on && !s.running); $("tune-sim").hidden = !(on && s.simulated);
+  renderParams(t);
+  renderRound(s, t);
+  const hk = JSON.stringify([t.history, (t.params || []).map(p => [p.key, p.label])]);
+  if (tuneKeys.history !== hk) { tuneKeys.history = hk; renderHistory(t); }
+}
+/* nav item, sidebar status line and (only while it is on screen) the Auto-tune view; a server without a tuner just hides it all */
+function renderTuneAll(s, force) {
+  const t = s.tuner && typeof s.tuner === "object" ? s.tuner : null;
+  $("nav-tune").hidden = !t;
+  const stat = $("tunestat"); stat.hidden = !(t && t.enabled);
+  if (!t) { if (view === "tune") show("dashboard"); return; }
+  if (t.enabled) {
+    const R = (t.config || {}).round_launches, n = (t.clones || []).length ? t.round : (t.round || 0) + 1;
+    put($("tunestat-text"), t.paused ? "Auto-tune: paused (repeat data)" : !s.running ? "Auto-tune: ON · waiting for the bot to start" : `Auto-tune: ON · round ${n} (${t.progress || 0}/${R})`);
+  }
+  if (view === "tune") renderTune(s, force);
+}
+
 function render(s) {
   last = s;
   const running = s.running;
@@ -601,9 +917,10 @@ function render(s) {
   const err = s.feed_status.startsWith("error");
   $("modedot").className = "dot " + (err ? "bad" : s.feed_status === "live" ? "ok" : "warn");
   const tag = s.simulated ? "DEMO" : s.source.startsWith("live") ? "LIVE" : "REPLAY";
-  $("modetext").textContent = ""; const b = el("b", "", tag); $("modetext").append(b, document.createTextNode(" · " + (s.simulated ? "SIMULATED DATA" : s.source.replace(/^(live|replay) ?/, "") || "PAPER") + (s.feed_status === "finished" ? " · FINISHED" : err ? " · ERROR" : "")));
+  $("modetext").textContent = ""; const b = el("b", "", tag); $("modetext").append(b, document.createTextNode(" · " + (s.simulated ? "SIMULATED DATA" : s.source.replace(/^(live|replay) ?/, "") || "PAPER") + (s.lap > 1 ? " · LAP " + s.lap + " (REPEAT)" : "") + (s.feed_status === "finished" ? " · FINISHED — NO MORE DATA" : err ? " · ERROR" : "")));
   const isReplay = !s.simulated && s.source.startsWith("replay");
   $("simnote").hidden = !s.simulated; $("realnote").hidden = !isReplay;
+  $("realnote").textContent = REAL_NOTE + (s.lap > 1 ? ` LAP ${s.lap}: the recording is playing again under new names. The bot has already seen these launches, so profit from repeats is NOT new evidence.` : "") + (s.feed_status === "finished" ? " The recording has finished and there is no more data to scan." : "");
   const sel = $("sourcesel"); sel.hidden = !(s.sources && s.sources.length > 1);
   if (!sel.hidden && sel.dataset.built !== "1") { s.sources.forEach(o => { const opt = el("option", "", o.label); opt.value = o.id; sel.append(opt); }); sel.dataset.built = "1"; }
   if (!sel.hidden && document.activeElement !== sel) sel.value = s.source_id;
@@ -626,6 +943,7 @@ function render(s) {
     const sk = Object.entries(s.counters.skipped).sort((a, b) => b[1] - a[1]);
     kv($("skips"), sk.length ? sk.map(([k, v]) => [k.replace("verdict:", "verdict ").replaceAll("_", " "), v]) : [["Nothing skipped yet", ""]]);
   }
+  renderTuneAll(s, false);
 }
 
 try { const n = localStorage.getItem("rowlimit"); if ([...$("rowlimit").options].some(o => o.value === n)) $("rowlimit").value = n; else $("rowlimit").value = "25"; } catch (e) { $("rowlimit").value = "25"; }
@@ -634,13 +952,15 @@ let inflight = false;
 async function poll() {
   if (inflight) return; inflight = true;
   try {
-    const r = await fetch("/api/state?range=" + $("range").value + "&rows=" + $("rowlimit").value, {cache: "no-store"});
-    render(await r.json());
+    const ep = tuneEpoch, r = await fetch("/api/state?range=" + $("range").value + "&rows=" + $("rowlimit").value, {cache: "no-store"});
+    const s = await r.json();
+    if ((ep !== tuneEpoch || tuneBusy) && last && last.tuner && s.tuner) s.tuner = last.tuner;  // we changed the tuner while this request was in flight: keep the newer answer
+    render(s);
   } catch (e) { $("modedot").className = "dot bad"; $("modetext").textContent = "SERVER OFFLINE"; }
   finally { inflight = false; }
 }
 document.querySelectorAll("#nav button").forEach(b => b.addEventListener("click", () => last && render(last)));
-if (/^#(dashboard|logs|profile)$/.test(location.hash)) show(location.hash.slice(1));
+if (/^#(dashboard|logs|profile|tune)$/.test(location.hash)) show(location.hash.slice(1));
 if (/^#config/.test(location.hash)) { const w = setInterval(() => { if (last) { clearInterval(w); openCfg(); const tab = location.hash.split(":")[1]; if (tab) document.querySelector(`#cfgtabs button[data-pane=${tab}]`)?.click(); } }, 100); }
 poll(); setInterval(poll, 1000);
 </script>

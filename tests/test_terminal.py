@@ -11,7 +11,7 @@ from pathlib import Path
 from sniper.paper.engine import PaperEngine, Strategy
 from sniper.pump import synth
 from sniper.pump.events import NewToken
-from sniper.terminal.feeds import DemoFeed, ReplayFeed, start_feed
+from sniper.terminal.feeds import DemoFeed, ReplayFeed, repeat_lap, start_feed
 from sniper.terminal.server import INDEX, make_server
 from sniper.terminal.state import DEFAULT_ROWS, MAX_ROWS, TerminalState, clamp_rows, default_strategy, parse_settings, settings_dict
 
@@ -541,3 +541,181 @@ class RowLimit(unittest.TestCase):
         src = INDEX.read_text()
         self.assertIn('id="rowlimit"', src)
         self.assertIn('"&rows=" + $("rowlimit").value', src)
+
+
+class Laps(unittest.TestCase):
+    """A finite recording must not leave the bot with nothing to scan: it repeats, and says so."""
+
+    def recording(self):
+        sim = Sim("REAL1", "DEV1", 1000)
+        return [sim.create(), sim.scan(1100), sim.buy(1200, 1.0), sim.sell(1500, 1_000_000.0, "DEV1")]
+
+    def test_a_repeat_lap_is_later_renamed_and_keeps_wallet_identity(self):
+        events = self.recording()
+        lap2 = repeat_lap(events, 2)
+        self.assertEqual(len(lap2), len(events))
+        self.assertGreater(lap2[0].t, events[-1].t)  # starts after lap 1 ended
+        self.assertEqual({e.mint for e in lap2}, {"REAL1~2"})
+        creator, seller = lap2[0].creator, lap2[3].trader
+        self.assertEqual((creator, seller), ("DEV1~2", "DEV1~2"))  # the creator's own sale is still the creator's
+        self.assertEqual([getattr(e, "v_sol", None) for e in lap2], [getattr(e, "v_sol", None) for e in events])  # same prices
+        self.assertEqual(repeat_lap(events, 3)[0].t - lap2[0].t, lap2[0].t - events[0].t)  # laps are evenly spaced
+        self.assertEqual(events, self.recording())  # the original is not modified
+
+    def test_looping_feed_keeps_emitting_and_reports_each_lap(self):
+        stop, got, laps = threading.Event(), [], []
+        feed = ReplayFeed(self.recording(), sleep=lambda s: None, loop=True)
+        feed.on_lap = laps.append
+        def emit(ev):
+            got.append(ev)
+            if len(got) >= 10:
+                stop.set()
+        feed.run(emit, stop)
+        self.assertEqual(laps, [2, 3])
+        self.assertEqual([e.mint for e in got], ["REAL1"] * 4 + ["REAL1~2"] * 4 + ["REAL1~3"] * 2)
+
+    def test_without_loop_the_feed_ends_and_the_state_says_finished(self):
+        st = TerminalState(FAST)
+        feed = ReplayFeed(self.recording(), sleep=lambda s: None)
+        start_feed(feed, st, threading.Event()).join(2)
+        self.assertEqual((st.snapshot()["feed_status"], st.snapshot()["lap"]), ("finished", 1))
+
+    def test_state_reports_the_lap_and_logs_it(self):
+        st = TerminalState(FAST)
+        feed = ReplayFeed(self.recording(), sleep=lambda s: None, loop=True)
+        stop = threading.Event()
+        count = []
+        def emit(ev):
+            st.emit(ev)
+            count.append(ev)
+            if len(count) >= 9:
+                stop.set()
+        feed.on_lap = st.set_lap
+        feed.run(emit, stop)
+        snap = st.snapshot()
+        self.assertEqual(snap["lap"], 3)
+        self.assertTrue(any("lap 3" in l["text"] and "not new evidence" in l["text"] for l in snap["logs"]))
+
+    def test_start_feed_connects_the_lap_counter_to_the_state(self):
+        import time
+        st, stop = TerminalState(FAST), threading.Event()
+        thread = start_feed(ReplayFeed(self.recording(), sleep=lambda s: time.sleep(0.001), loop=True), st, stop)
+        deadline = time.time() + 5
+        while st.snapshot()["lap"] < 2 and time.time() < deadline:
+            time.sleep(0.01)
+        stop.set()
+        thread.join(2)
+        self.assertGreaterEqual(st.snapshot()["lap"], 2)
+
+    def test_page_labels_repeat_laps(self):
+        src = INDEX.read_text()
+        self.assertIn("REPEAT", src)
+        self.assertIn("NOT new evidence", src)
+
+
+class TunerInTheTerminal(unittest.TestCase):
+    """The auto-tuner as the terminal drives it: switched on by the user, run only while the bot trades, applied through the settings rules."""
+
+    def state(self, **cfg):
+        from .test_tuner import QUICK
+        st = TerminalState(replace(QUICK, take_profit_pct=60, size_caution_sol=0.1, max_open=20), log_size=5000)
+        st.configure_tuner({"enabled": True, "clones": 4, "round_launches": 20, "params": ["take_profit"], **cfg})
+        return st
+
+    def feed_market(self, st, n=100):
+        from .test_tuner import pump_and_dump
+        for ev in pump_and_dump(n):
+            st.emit(ev)
+
+    def test_it_is_off_until_the_user_switches_it_on(self):
+        from .test_tuner import pump_and_dump
+        st = TerminalState(FAST)
+        st.set_running(True)
+        for ev in pump_and_dump(40):
+            st.emit(ev)
+        t = st.snapshot()["tuner"]
+        self.assertEqual((t["enabled"], t["round"], t["clones"], t["history"]), (False, 0, [], []))
+
+    def test_it_does_nothing_while_the_bot_is_stopped(self):
+        st = self.state()
+        self.feed_market(st, 60)
+        t = st.snapshot()["tuner"]
+        self.assertEqual((t["enabled"], t["round"], t["history"]), (True, 0, []))
+
+    def test_a_finished_round_changes_the_real_settings_through_the_normal_rules(self):
+        st = self.state()
+        st.set_running(True)
+        self.feed_market(st, 100)
+        snap = st.snapshot()
+        changed = [h for h in snap["tuner"]["history"] if h["decision"] == "changed"]
+        self.assertTrue(changed)
+        self.assertLess(snap["settings"]["take_profit"], 60)
+        self.assertEqual(st.strategy.take_profit_pct, snap["settings"]["take_profit"])
+        self.assertEqual(st.engine.s.take_profit_pct, st.strategy.take_profit_pct)  # the live bot really uses it
+        logs = [l for l in st.logs if l["kind"] == "tune"]  # (a snapshot only carries the newest 200 lines)
+        self.assertTrue(logs)
+        self.assertIn("auto-tune round", logs[0]["text"])
+        self.assertTrue(any("Take profit (%)" in l["text"] and " to " in l["text"] for l in logs))
+        self.assertTrue(any("settings kept" in l["text"] for l in logs) or len(changed) == len(snap["tuner"]["history"]))
+
+    def test_stopping_the_bot_drops_the_clones_and_starting_begins_a_new_round(self):
+        st = self.state()
+        st.set_running(True)
+        self.feed_market(st, 8)
+        self.assertTrue(st.snapshot()["tuner"]["clones"])
+        st.set_running(False)
+        self.assertEqual(st.snapshot()["tuner"]["clones"], [])
+        st.set_running(True)
+        self.assertEqual(st.snapshot()["tuner"]["progress"], 0)
+
+    def test_editing_a_setting_by_hand_restarts_the_round_around_the_new_value(self):
+        st = self.state()
+        st.set_running(True)
+        self.feed_market(st, 8)
+        self.assertTrue(st.snapshot()["tuner"]["clones"])
+        st.update_settings({"take_profit": 45})
+        self.assertEqual(st.snapshot()["tuner"]["clones"], [])
+        from .test_tuner import pump_and_dump
+        for ev in pump_and_dump(5, gap=10_000)[:12]:
+            st.emit(replace(ev, t=ev.t + 10_000_000))
+        centres = {c["changes"]["take_profit"] for c in st.snapshot()["tuner"]["clones"] if c["changes"]}
+        self.assertTrue(centres)
+        self.assertTrue(all(30 < v < 60 and v != 45 for v in centres), centres)
+
+    def test_a_repeat_lap_pauses_it_and_the_first_lap_resumes_it(self):
+        st = self.state()
+        st.set_running(True)
+        self.feed_market(st, 8)
+        st.set_lap(2)
+        t = st.snapshot()["tuner"]
+        self.assertIn("already seen", t["paused"])
+        self.assertEqual(t["clones"], [])
+        self.feed_market(st, 8)
+        self.assertEqual(st.snapshot()["tuner"]["clones"], [])
+        st.set_lap(1)
+        self.assertIsNone(st.snapshot()["tuner"]["paused"])
+
+    def test_resetting_the_paper_account_drops_the_clones(self):
+        st = self.state()
+        st.set_running(True)
+        self.feed_market(st, 8)
+        st.reset()
+        self.assertEqual(st.snapshot()["tuner"]["clones"], [])
+
+    def test_bad_settings_are_refused_and_nothing_changes(self):
+        st = self.state()
+        before = st.snapshot()["tuner"]["config"]
+        for bad in ({"clones": 99}, {"caution": "reckless"}, {"blend": 5}, {"params": ["not_a_setting"]}, {"enabled": 1}, {"nope": True}):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    st.configure_tuner(bad)
+        self.assertEqual(st.snapshot()["tuner"]["config"], before)
+
+    def test_every_value_the_tuner_picks_is_accepted_by_the_settings_screen(self):
+        st = self.state(params=[p for p in ("take_profit", "stop_loss", "trailing_stop_pct", "max_hold_s", "min_liquidity_sol", "max_dev_buy_pct", "min_trades")], caution="eager", round_launches=20)
+        st.set_running(True)
+        market = synth.generate(21, 260, 1_000_000)
+        for ev in market:
+            st.emit(ev)
+        self.assertGreaterEqual(len(st.snapshot()["tuner"]["history"]), 10)
+        parse_settings(settings_dict(st.strategy), default_strategy())  # still a valid configuration
