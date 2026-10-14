@@ -92,6 +92,7 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
 
 /* table */
 .main{min-height:640px;padding:0;overflow:hidden;display:flex;flex-direction:column}
+.rowbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 4px 12px;font:12px var(--mono);color:var(--muted)}.rowbar label{display:flex;align-items:center;gap:8px}
 .scroll{overflow-x:auto;flex:1;display:flex;flex-direction:column}
 .trow{display:grid;grid-template-columns:1.5fr .8fr 1.5fr .8fr 1.1fr 1fr .9fr;gap:10px;align-items:center;padding:12px 18px;min-width:820px}
 .thead{font:10.5px var(--mono);letter-spacing:.16em;color:var(--dim);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)}
@@ -239,6 +240,8 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
     <section>
       <div class="view on" id="view-dashboard">
         <div class="card main">
+          <div class="rowbar"><span id="rowcount" class="mut"></span>
+            <label>Show <select class="inp" id="rowlimit" aria-label="Tokens shown"><option>10</option><option>25</option><option>50</option><option>100</option></select> tokens</label></div>
           <div class="scroll">
             <div class="trow thead"><span>TOKEN</span><span>TIME</span><span>STATUS</span><span>AMOUNT</span><span>P&amp;L</span><span>LIQUIDITY</span><span>ACTIONS</span></div>
             <div id="rows"></div>
@@ -554,9 +557,13 @@ function statusChip(r) {
     default: return ["SCANNING", ""];
   }
 }
-function renderRows(rows, simulated) {
-  const host = $("rows"); host.replaceChildren();
+let rowsKey = "";
+function renderRows(rows, simulated, total) {
+  const limit = +$("rowlimit").value, extra = Math.max(rows.length - limit, 0), core = rows.length - extra;  // older tokens the bot still holds are kept on top of the limit
+  $("rowcount").textContent = (total > core ? `Showing the latest ${core} of ${total} tokens tracked` : `${core} token${core === 1 ? "" : "s"} tracked`) + (extra ? ` + ${extra} older still open` : "");
   $("empty").style.display = rows.length ? "none" : "flex";
+  const key = JSON.stringify([rows, simulated]); if (key === rowsKey) return; rowsKey = key;  // nothing changed: leave the page alone
+  const host = $("rows"); host.replaceChildren();
   for (const r of rows) {
     const row = el("div", "trow");
     const tok = el("div", "tok"); tok.append(el("b", "", r.symbol || "?"), el("small", "", r.mint.slice(0, 6) + "…" + r.mint.slice(-4)));
@@ -609,7 +616,7 @@ function render(s) {
   $("s-trades").textContent = st.trades; $("s-wins").textContent = st.wins; $("s-rate").textContent = Math.round(st.win_rate) + "%";
   const p = $("s-pnl"); p.textContent = signed(st.pnl_sol); p.className = "v " + (st.pnl_sol > 0 ? "pos" : st.pnl_sol < 0 ? "neg" : "");
 
-  renderRows(s.rows, s.simulated);
+  renderRows(s.rows, s.simulated, s.rows_total);
   if (view === "logs") renderLogs(s.logs);
   sparkline($("spark-small"), s.equity_curve, s.paper.start);
   if (view === "profile") {
@@ -621,11 +628,13 @@ function render(s) {
   }
 }
 
+try { const n = localStorage.getItem("rowlimit"); if ([...$("rowlimit").options].some(o => o.value === n)) $("rowlimit").value = n; else $("rowlimit").value = "25"; } catch (e) { $("rowlimit").value = "25"; }
+$("rowlimit").onchange = () => { try { localStorage.setItem("rowlimit", $("rowlimit").value); } catch (e) {} poll(); };
 let inflight = false;
 async function poll() {
   if (inflight) return; inflight = true;
   try {
-    const r = await fetch("/api/state?range=" + $("range").value, {cache: "no-store"});
+    const r = await fetch("/api/state?range=" + $("range").value + "&rows=" + $("rowlimit").value, {cache: "no-store"});
     render(await r.json());
   } catch (e) { $("modedot").className = "dot bad"; $("modetext").textContent = "SERVER OFFLINE"; }
   finally { inflight = false; }

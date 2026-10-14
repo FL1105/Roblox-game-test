@@ -47,8 +47,9 @@ def make_server(state: TerminalState, host: str = "127.0.0.1", port: int = 8765)
             if url.path in ("/", "/index.html"):
                 return self._send(200, INDEX.read_bytes(), "text/html; charset=utf-8")
             if url.path == "/api/state":
-                window = parse_qs(url.query).get("range", ["24h"])[0]
-                return self._json(200, state.snapshot("all" if window == "all" else "24h"))
+                query = parse_qs(url.query)
+                window = query.get("range", ["24h"])[0]
+                return self._json(200, state.snapshot("all" if window == "all" else "24h", query.get("rows", [None])[0]))
             self._json(404, {"error": "not found"})
 
         def do_POST(self) -> None:

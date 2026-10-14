@@ -13,7 +13,7 @@ from sniper.pump import synth
 from sniper.pump.events import NewToken
 from sniper.terminal.feeds import DemoFeed, ReplayFeed, start_feed
 from sniper.terminal.server import INDEX, make_server
-from sniper.terminal.state import TerminalState, default_strategy, parse_settings, settings_dict
+from sniper.terminal.state import DEFAULT_ROWS, MAX_ROWS, TerminalState, clamp_rows, default_strategy, parse_settings, settings_dict
 
 from .sim import Sim
 
@@ -469,3 +469,75 @@ class LadderSettingsAndDisplay(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RowLimit(unittest.TestCase):
+    """The dashboard only gets as many token rows as it asks for, so a busy market can't bog the page down."""
+
+    def busy_state(self, n=60, running=False):
+        st = TerminalState(FAST)
+        if running:
+            st.set_running(True)
+        for i in range(n):
+            st.emit(Sim(f"MINT{i:03d}", f"CREATOR{i:03d}", 1000 + i * 10).create())
+        return st
+
+    def test_clamp(self):
+        self.assertEqual([clamp_rows(v) for v in (None, "", "abc", "inf", 0, -5, 7, "12", 12.9, 10**9, True)],
+                         [DEFAULT_ROWS, DEFAULT_ROWS, DEFAULT_ROWS, DEFAULT_ROWS, 1, 1, 7, 12, 12, MAX_ROWS, 1])
+
+    def test_default_is_small_and_newest_first(self):
+        snap = self.busy_state().snapshot()
+        self.assertEqual(len(snap["rows"]), DEFAULT_ROWS)
+        self.assertEqual(snap["rows_total"], 60)
+        self.assertEqual([r["mint"] for r in snap["rows"][:2]], ["MINT059", "MINT058"])
+        self.assertEqual(snap["rows"][-1]["mint"], f"MINT{60 - DEFAULT_ROWS:03d}")
+
+    def test_limit_is_respected_and_capped(self):
+        st = self.busy_state(150)
+        self.assertEqual(len(st.snapshot(rows=10)["rows"]), 10)
+        self.assertEqual(len(st.snapshot(rows=1)["rows"]), 1)
+        self.assertEqual(len(st.snapshot(rows=100000)["rows"]), MAX_ROWS)
+        self.assertEqual(len(self.busy_state(5).snapshot(rows=50)["rows"]), 5)
+
+    def test_a_token_the_bot_holds_is_never_pushed_off_the_list(self):
+        st = TerminalState(FAST)
+        st.set_running(True)
+        for ev in winner_events("HELD", 1000)[:3]:  # bought into, still open
+            st.emit(ev)
+        for i in range(40):
+            st.emit(Sim(f"LATER{i:02d}", f"C{i:02d}", 5000 + i * 10).create())
+        snap = st.snapshot(rows=5)
+        mints = [r["mint"] for r in snap["rows"]]
+        self.assertEqual(snap["paper"]["open"], 1)
+        self.assertEqual(mints, ["LATER39", "LATER38", "LATER37", "LATER36", "LATER35", "HELD"])
+        self.assertEqual(snap["rows"][-1]["status"], "holding")
+
+    def test_a_buy_still_filling_is_kept_too(self):
+        st = TerminalState(replace(FAST, latency_ms=60_000))
+        st.set_running(True)
+        for ev in winner_events("FILLING", 1000)[:2]:  # decided to buy, order not filled yet
+            st.emit(ev)
+        for i in range(40):
+            st.emit(Sim(f"LATER{i:02d}", f"C{i:02d}", 5000 + i * 10).create())
+        rows = st.snapshot(rows=5)["rows"]
+        self.assertEqual([(r["mint"], r["status"]) for r in rows][-1], ("FILLING", "entering"))
+        self.assertEqual(len(rows), 6)
+
+    def test_server_passes_the_limit_through(self):
+        st = self.busy_state(60)
+        srv = make_server(st, "127.0.0.1", 0)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            def rows(query):
+                with urllib.request.urlopen(f"http://127.0.0.1:{srv.server_address[1]}/api/state{query}", timeout=5) as r:
+                    return len(json.load(r)["rows"])
+            self.assertEqual([rows(""), rows("?rows=10"), rows("?range=all&rows=40"), rows("?rows=junk"), rows("?rows=0")], [DEFAULT_ROWS, 10, 40, DEFAULT_ROWS, 1])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_page_offers_the_choice_and_sends_it(self):
+        src = INDEX.read_text()
+        self.assertIn('id="rowlimit"', src)
+        self.assertIn('"&rows=" + $("rowlimit").value', src)

@@ -396,7 +396,8 @@ class PaperEngine {
 const ALLOWED_VERDICTS = ["PASS", "CAUTION", "AVOID"];
 const SIZE_MODES = ["verdict", "random", "fixed"];
 const WALLET_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const MAX_BLACKLIST = 200, MAX_ROWS = 80;
+const MAX_BLACKLIST = 200, DEFAULT_ROWS = 25, MAX_ROWS = 100;
+function clampRows(v) { const n = Math.trunc(Number(v)); return Number.isFinite(n) && v !== null && v !== "" ? Math.max(1, Math.min(n, MAX_ROWS)) : DEFAULT_ROWS; }
 
 function defaultStrategy() { return Object.assign(defaultStrategyFields(), { size_sol: 0.1, size_caution_sol: 0.05, auto_compound: true }); }
 
@@ -571,19 +572,21 @@ class TerminalState {
     this.log_total += 1; this.logs.unshift({ t, kind, mint, text });
     if (this.logs.length > this._logSize) this.logs.length = this._logSize;
   }
-  snapshot(win) {
-    const e = this.engine;
+  snapshot(win, rows) {
+    const e = this.engine, limit = clampRows(rows);
     const closed = win === "all" ? e.closed : e.closed.filter((c) => c.exit_t >= e.last_t - DAY_MS);
     const wins = closed.filter((c) => c.ret_pct > 0);
     let invested = 0; for (const p of e.positions.values()) invested += p.sol_in;
-    const entries = [...this.tokens.entries()].slice(-MAX_ROWS).reverse();
+    const items = [...this.tokens.entries()];  // newest `limit` tokens, plus any older one the bot still has money in
+    const pinned = items.slice(0, Math.max(items.length - limit, 0)).filter(([m]) => e.positions.has(m) || e.pending.has(m));
+    const entries = pinned.concat(items.slice(-limit)).reverse();
     return {
       running: this.running, source: this.source, simulated: this.simulated, feed_status: this.feed_status, clock: this.clock, events_seen: this.events_seen,
       paper: { start: this.start_sol, equity: e.cash + invested, cash: e.cash, open: e.positions.size },
       settings: settingsDict(this.strategy), presets: PRESETS, has_model: !!this.model_policy, sources: this.sources, source_id: this.source_id,
       stats: { window: win, trades: closed.length, wins: wins.length, win_rate: closed.length ? wins.length / closed.length * 100 : 0, pnl_sol: closed.reduce((a, c) => a + c.pnl_sol, 0) },
       counters: { launches: e.launch.size, scanned: e.scans.size, skipped: Object.assign({}, e.skipped) },
-      rows: entries.map(([m, t]) => this._row(m, t)), logs: this.logs.slice(0, 200), log_total: this.log_total,
+      rows: entries.map(([m, t]) => this._row(m, t)), rows_total: this.tokens.size, logs: this.logs.slice(0, 200), log_total: this.log_total,
       equity_curve: e.equity_curve.slice(-300),
     };
   }
@@ -708,7 +711,7 @@ function makeApi(app) {
   return async function (url, opts) {
     const u = new URL(url, "http://local"), path = u.pathname, method = ((opts && opts.method) || "GET").toUpperCase();
     const state = app.state;
-    if (method === "GET" && path === "/api/state") return json(200, state.snapshot(u.searchParams.get("range") === "all" ? "all" : "24h"));
+    if (method === "GET" && path === "/api/state") return json(200, state.snapshot(u.searchParams.get("range") === "all" ? "all" : "24h", u.searchParams.get("rows")));
     if (method !== "POST") return json(404, { error: "not found" });
     let data; try { data = JSON.parse((opts && opts.body) || "{}"); if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error(); } catch (e) { return json(400, { error: "body must be a JSON object" }); }
     try {

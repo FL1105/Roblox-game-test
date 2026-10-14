@@ -35,6 +35,7 @@ const save = async () => { await page.click("#cfgsave"); };
 
   // 3. gains that don't increase are refused with an error toast, and the old ladder stays
   await page.fill(rung(3, "gain (%)"), "20"); await page.fill(rung(3, "share to sell (%)"), "10");
+  await page.waitForSelector("#toast", { state: "hidden" }); // the "saved" message from step 1 must be gone, or we'd read that one
   await save(); await page.waitForSelector("#toast", { state: "visible" });
   const toast = await page.textContent("#toast");
   check("decreasing gains refused with a message", /ladder|rung|increas/i.test(toast), toast);

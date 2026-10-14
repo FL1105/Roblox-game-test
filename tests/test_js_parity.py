@@ -13,7 +13,7 @@ from sniper.policy.features import FEATURES
 from sniper.policy.model import HoldModel, Logistic, ModelExit
 from sniper.pump import synth
 from sniper.pump.events import to_wire
-from sniper.terminal.state import PRESETS, TerminalState, default_strategy, parse_settings, settings_dict
+from sniper.terminal.state import DEFAULT_ROWS, PRESETS, TerminalState, default_strategy, parse_settings, settings_dict
 
 ROOT = Path(__file__).resolve().parent.parent
 WALLET = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
@@ -263,7 +263,8 @@ def run_cases():
             st.emit(ev)
         runs.append({
             "name": name, "payload": payload, "start_sol": bankroll, "clock0": clock0, "model": model_json(model) if use_model else None, "events": [wire(e) for e in events],
-            "snapshots": {w: json.loads(json.dumps(st.snapshot(w))) for w in ("24h", "all")},
+            "snapshots": {k: json.loads(json.dumps(st.snapshot(k.split("@")[0], int(k.split("@")[1]) if "@" in k else DEFAULT_ROWS)))
+                          for k in ("24h", "all", "all@1", "all@3", "all@100")},
             "closed": [dataclasses.asdict(c) for c in st.engine.closed],
         })
     return runs
@@ -291,6 +292,9 @@ class JsParity(unittest.TestCase):
         self.assertGreaterEqual(reasons, {"profit_stall", "smart_trail", "stalled", "model_sell"}, reasons)
         self.assertGreaterEqual(reasons, {"breakeven_stop", "ladder_2"}, reasons)
         self.assertTrue(any(l["kind"] == "partial" for r in runs for l in r["snapshots"]["all"]["logs"]), "no ladder sale was ever compared")
+        # the token-row limit must be compared where it matters: more tokens than rows, and an old token still held
+        self.assertTrue(any(r["snapshots"]["all@3"]["rows_total"] > 3 and len(r["snapshots"]["all@3"]["rows"]) == 3 for r in runs), "row limit never cut anything")
+        self.assertTrue(any(len(r["snapshots"]["all@1"]["rows"]) > 1 for r in runs), "no older open position was ever kept past the row limit")
         self.assertGreaterEqual(skips, {"max_open", "slippage", "low_liquidity", "blacklisted", "no_cash", "verdict", "no_confirmation"})
         self.assertGreaterEqual(skips, {"too_few_trades", "too_old", "chasing", "serial_creator", "collapsed_creator"}, skips)
         quiet_by_design = ("slippage-abort", "low-liquidity", "rugger-then-relaunch", "creator-sells-60-percent", "confirm-watch-expires", "confirm-needs-current-flow", "filters-with-confirm", "filter-min-trades", "filter-min-trades-boundary", "filter-serial-later-launch-ignored", "filter-token-age", "filter-no-chasing", "filter-collapsed-creator", "ladder-stop-before-any-rung", "ladder-price-falls-before-fill-small", "ladder-price-falls-before-fill-medium", "ladder-price-falls-before-fill-big")

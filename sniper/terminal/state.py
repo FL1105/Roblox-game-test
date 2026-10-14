@@ -14,7 +14,17 @@ from ..pump.curve import VIRTUAL_START_SOL, quote_sell
 from ..pump.events import TOTAL_SUPPLY, Event, NewToken, ScanNote, Trade
 
 DAY_MS = 86_400_000
-MAX_ROWS = 80
+DEFAULT_ROWS = 25  # token rows the dashboard shows unless asked otherwise
+MAX_ROWS = 100
+
+
+def clamp_rows(value) -> int:
+    """How many token rows to send: a whole number from 1 to MAX_ROWS; anything else falls back to the default."""
+    try:
+        n = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return DEFAULT_ROWS
+    return max(1, min(n, MAX_ROWS))
 ALLOWED_VERDICTS = ("PASS", "CAUTION", "AVOID")
 
 
@@ -278,7 +288,8 @@ class TerminalState:
         self.logs.appendleft({"t": t, "kind": kind, "mint": mint, "text": text})
 
     # ---- views ----
-    def snapshot(self, window: str = "24h") -> dict:
+    def snapshot(self, window: str = "24h", rows: int = DEFAULT_ROWS) -> dict:
+        limit = clamp_rows(rows)
         with self.lock:
             e = self.engine
             closed = e.closed if window == "all" else [c for c in e.closed if c.exit_t >= e.last_t - DAY_MS]
@@ -305,11 +316,19 @@ class TerminalState:
                     "pnl_sol": sum(c.pnl_sol for c in closed),
                 },
                 "counters": {"launches": len(e.launch), "scanned": len(e.scans), "skipped": dict(e.skipped)},
-                "rows": [self._row(m, t) for m, t in list(self.tokens.items())[-MAX_ROWS:][::-1]],
+                "rows": [self._row(m, t) for m, t in self._visible(limit)],
+                "rows_total": len(self.tokens),
                 "logs": list(self.logs)[:200],
                 "log_total": self.log_total,
                 "equity_curve": e.equity_curve[-300:],
             }
+
+    def _visible(self, limit: int) -> list[tuple[str, dict]]:
+        """Newest `limit` tokens, newest first, plus any older token the bot still has money in."""
+        items = list(self.tokens.items())
+        e = self.engine
+        pinned = [(m, t) for m, t in items[:-limit] if m in e.positions or m in e.pending]
+        return (pinned + items[-limit:])[::-1]
 
     def _row(self, mint: str, tok: dict) -> dict:
         e = self.engine

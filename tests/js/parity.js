@@ -29,7 +29,10 @@ for (const [i, c] of cases.runs.entries()) {
   const st = new js.TerminalState(js.defaultStrategy(), { source: "demo", simulated: true, start_sol: c.start_sol, model: c.model });
   st.updateSettings(c.payload); st.clock = c.clock0; st.setRunning(true);
   for (const ev of c.events) st.emit(ev);
-  for (const win of ["24h", "all"]) same(c.snapshots[win], JSON.parse(JSON.stringify(st.snapshot(win))), `run[${i}:${c.name}].snapshot(${win})`);
+  for (const [key, expected] of Object.entries(c.snapshots)) {
+    const [win, rows] = key.split("@");  // "all@3" = the all-time window limited to 3 token rows
+    same(expected, JSON.parse(JSON.stringify(st.snapshot(win, rows))), `run[${i}:${c.name}].snapshot(${key})`);
+  }
   same(c.closed, st.engine.closed, `run[${i}:${c.name}].closed`);
 }
 // 3. path features and model scores on many random token paths, compared number by number

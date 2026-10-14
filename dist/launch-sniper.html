@@ -92,6 +92,7 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
 
 /* table */
 .main{min-height:640px;padding:0;overflow:hidden;display:flex;flex-direction:column}
+.rowbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 4px 12px;font:12px var(--mono);color:var(--muted)}.rowbar label{display:flex;align-items:center;gap:8px}
 .scroll{overflow-x:auto;flex:1;display:flex;flex-direction:column}
 .trow{display:grid;grid-template-columns:1.5fr .8fr 1.5fr .8fr 1.1fr 1fr .9fr;gap:10px;align-items:center;padding:12px 18px;min-width:820px}
 .thead{font:10.5px var(--mono);letter-spacing:.16em;color:var(--dim);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)}
@@ -239,6 +240,8 @@ textarea.inp{min-height:70px;resize:vertical;font-size:12px}
     <section>
       <div class="view on" id="view-dashboard">
         <div class="card main">
+          <div class="rowbar"><span id="rowcount" class="mut"></span>
+            <label>Show <select class="inp" id="rowlimit" aria-label="Tokens shown"><option>10</option><option>25</option><option>50</option><option>100</option></select> tokens</label></div>
           <div class="scroll">
             <div class="trow thead"><span>TOKEN</span><span>TIME</span><span>STATUS</span><span>AMOUNT</span><span>P&amp;L</span><span>LIQUIDITY</span><span>ACTIONS</span></div>
             <div id="rows"></div>
@@ -687,7 +690,8 @@ class PaperEngine {
 const ALLOWED_VERDICTS = ["PASS", "CAUTION", "AVOID"];
 const SIZE_MODES = ["verdict", "random", "fixed"];
 const WALLET_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const MAX_BLACKLIST = 200, MAX_ROWS = 80;
+const MAX_BLACKLIST = 200, DEFAULT_ROWS = 25, MAX_ROWS = 100;
+function clampRows(v) { const n = Math.trunc(Number(v)); return Number.isFinite(n) && v !== null && v !== "" ? Math.max(1, Math.min(n, MAX_ROWS)) : DEFAULT_ROWS; }
 
 function defaultStrategy() { return Object.assign(defaultStrategyFields(), { size_sol: 0.1, size_caution_sol: 0.05, auto_compound: true }); }
 
@@ -862,19 +866,21 @@ class TerminalState {
     this.log_total += 1; this.logs.unshift({ t, kind, mint, text });
     if (this.logs.length > this._logSize) this.logs.length = this._logSize;
   }
-  snapshot(win) {
-    const e = this.engine;
+  snapshot(win, rows) {
+    const e = this.engine, limit = clampRows(rows);
     const closed = win === "all" ? e.closed : e.closed.filter((c) => c.exit_t >= e.last_t - DAY_MS);
     const wins = closed.filter((c) => c.ret_pct > 0);
     let invested = 0; for (const p of e.positions.values()) invested += p.sol_in;
-    const entries = [...this.tokens.entries()].slice(-MAX_ROWS).reverse();
+    const items = [...this.tokens.entries()];  // newest `limit` tokens, plus any older one the bot still has money in
+    const pinned = items.slice(0, Math.max(items.length - limit, 0)).filter(([m]) => e.positions.has(m) || e.pending.has(m));
+    const entries = pinned.concat(items.slice(-limit)).reverse();
     return {
       running: this.running, source: this.source, simulated: this.simulated, feed_status: this.feed_status, clock: this.clock, events_seen: this.events_seen,
       paper: { start: this.start_sol, equity: e.cash + invested, cash: e.cash, open: e.positions.size },
       settings: settingsDict(this.strategy), presets: PRESETS, has_model: !!this.model_policy, sources: this.sources, source_id: this.source_id,
       stats: { window: win, trades: closed.length, wins: wins.length, win_rate: closed.length ? wins.length / closed.length * 100 : 0, pnl_sol: closed.reduce((a, c) => a + c.pnl_sol, 0) },
       counters: { launches: e.launch.size, scanned: e.scans.size, skipped: Object.assign({}, e.skipped) },
-      rows: entries.map(([m, t]) => this._row(m, t)), logs: this.logs.slice(0, 200), log_total: this.log_total,
+      rows: entries.map(([m, t]) => this._row(m, t)), rows_total: this.tokens.size, logs: this.logs.slice(0, 200), log_total: this.log_total,
       equity_curve: e.equity_curve.slice(-300),
     };
   }
@@ -999,7 +1005,7 @@ function makeApi(app) {
   return async function (url, opts) {
     const u = new URL(url, "http://local"), path = u.pathname, method = ((opts && opts.method) || "GET").toUpperCase();
     const state = app.state;
-    if (method === "GET" && path === "/api/state") return json(200, state.snapshot(u.searchParams.get("range") === "all" ? "all" : "24h"));
+    if (method === "GET" && path === "/api/state") return json(200, state.snapshot(u.searchParams.get("range") === "all" ? "all" : "24h", u.searchParams.get("rows")));
     if (method !== "POST") return json(404, { error: "not found" });
     let data; try { data = JSON.parse((opts && opts.body) || "{}"); if (data === null || typeof data !== "object" || Array.isArray(data)) throw new Error(); } catch (e) { return json(400, { error: "body must be a JSON object" }); }
     try {
@@ -1308,9 +1314,13 @@ function statusChip(r) {
     default: return ["SCANNING", ""];
   }
 }
-function renderRows(rows, simulated) {
-  const host = $("rows"); host.replaceChildren();
+let rowsKey = "";
+function renderRows(rows, simulated, total) {
+  const limit = +$("rowlimit").value, extra = Math.max(rows.length - limit, 0), core = rows.length - extra;  // older tokens the bot still holds are kept on top of the limit
+  $("rowcount").textContent = (total > core ? `Showing the latest ${core} of ${total} tokens tracked` : `${core} token${core === 1 ? "" : "s"} tracked`) + (extra ? ` + ${extra} older still open` : "");
   $("empty").style.display = rows.length ? "none" : "flex";
+  const key = JSON.stringify([rows, simulated]); if (key === rowsKey) return; rowsKey = key;  // nothing changed: leave the page alone
+  const host = $("rows"); host.replaceChildren();
   for (const r of rows) {
     const row = el("div", "trow");
     const tok = el("div", "tok"); tok.append(el("b", "", r.symbol || "?"), el("small", "", r.mint.slice(0, 6) + "…" + r.mint.slice(-4)));
@@ -1363,7 +1373,7 @@ function render(s) {
   $("s-trades").textContent = st.trades; $("s-wins").textContent = st.wins; $("s-rate").textContent = Math.round(st.win_rate) + "%";
   const p = $("s-pnl"); p.textContent = signed(st.pnl_sol); p.className = "v " + (st.pnl_sol > 0 ? "pos" : st.pnl_sol < 0 ? "neg" : "");
 
-  renderRows(s.rows, s.simulated);
+  renderRows(s.rows, s.simulated, s.rows_total);
   if (view === "logs") renderLogs(s.logs);
   sparkline($("spark-small"), s.equity_curve, s.paper.start);
   if (view === "profile") {
@@ -1375,11 +1385,13 @@ function render(s) {
   }
 }
 
+try { const n = localStorage.getItem("rowlimit"); if ([...$("rowlimit").options].some(o => o.value === n)) $("rowlimit").value = n; else $("rowlimit").value = "25"; } catch (e) { $("rowlimit").value = "25"; }
+$("rowlimit").onchange = () => { try { localStorage.setItem("rowlimit", $("rowlimit").value); } catch (e) {} poll(); };
 let inflight = false;
 async function poll() {
   if (inflight) return; inflight = true;
   try {
-    const r = await fetch("/api/state?range=" + $("range").value, {cache: "no-store"});
+    const r = await fetch("/api/state?range=" + $("range").value + "&rows=" + $("rowlimit").value, {cache: "no-store"});
     render(await r.json());
   } catch (e) { $("modedot").className = "dot bad"; $("modetext").textContent = "SERVER OFFLINE"; }
   finally { inflight = false; }
