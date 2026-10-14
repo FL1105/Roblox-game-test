@@ -12,3 +12,4 @@ research/ledger/vectors/
 !research/ledger/trials.jsonl
 !research/holdout_log.jsonl
 data/snapshots/raw_run2_latest.jsonl.gz
+*.pkl
