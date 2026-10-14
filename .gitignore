@@ -9,3 +9,5 @@ data/*.log
 data/*.pid
 research/cache/
 research/ledger/vectors/
+!research/ledger/trials.jsonl
+!research/holdout_log.jsonl
