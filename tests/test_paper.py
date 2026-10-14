@@ -104,7 +104,7 @@ class Latency(unittest.TestCase):
     def test_price_moves_while_the_order_is_in_flight(self):
         sim = Sim()
         events = [sim.create(), sim.scan(1100), sim.buy(1300, 1.0), sim.buy(1500, 5.0), sim.buy(1700, 0.01)]
-        eng = PaperEngine(replace(S, latency_ms=500, take_profit_pct=1e9))
+        eng = PaperEngine(replace(S, latency_ms=500, take_profit_pct=1e9, slippage_pct=100))
         for ev in events[:4]:
             eng.on_event(ev)
         self.assertEqual(eng.positions, {})  # ready at 1600, not yet filled

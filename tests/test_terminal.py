@@ -315,3 +315,106 @@ class EngineHooks(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfigOptions(unittest.TestCase):
+    def test_every_preset_is_valid_and_the_steady_one_matches_the_users_goal(self):
+        from sniper.terminal.state import PRESETS
+        base = default_strategy()
+        for name, preset in PRESETS.items():
+            new = parse_settings(preset["settings"], base)
+            self.assertLessEqual(new.size_caution_sol, new.size_sol, name)
+        steady = parse_settings(PRESETS["steady"]["settings"], base)
+        self.assertEqual((steady.take_profit_pct, steady.allowed_verdicts), (30.0, frozenset({"PASS"})))
+        self.assertEqual([k for k, p in PRESETS.items() if p["tag"] == "RECOMMENDED"], ["steady"])
+
+    def test_new_options_round_trip_through_settings(self):
+        s = parse_settings({
+            "trailing_stop_pct": 12, "slippage_pct": 7, "min_liquidity_sol": 3, "size_mode": "random",
+            "auto_compound": False, "use_blacklist": False, "honeypot_detection": False,
+            "blacklist": ["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"],
+        }, default_strategy())
+        self.assertEqual((s.trailing_stop_pct, s.slippage_pct, s.min_liquidity_sol, s.size_mode), (12.0, 7.0, 3.0, "random"))
+        self.assertEqual((s.auto_compound, s.use_blacklist, s.require_scan), (False, False, False))
+        self.assertEqual(parse_settings(settings_dict(s), s), s)
+
+    def test_rejects_bad_new_options(self):
+        s = default_strategy()
+        for payload in ({"size_mode": "yolo"}, {"slippage_pct": 0}, {"slippage_pct": 51}, {"trailing_stop_pct": 100},
+                        {"min_liquidity_sol": -1}, {"blacklist": ["nope"]}, {"blacklist": "x"}, {"blacklist": [1]},
+                        {"blacklist": ["7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"] * 201},
+                        {"honeypot_detection": "yes"}, {"auto_compound": 1}):
+            with self.assertRaises(ValueError, msg=str(payload)):
+                parse_settings(payload, s)
+
+    def test_honeypot_detection_off_buys_without_waiting_for_a_scan(self):
+        st = TerminalState(replace(FAST, require_scan=False))
+        st.set_running(True)
+        sim = Sim()
+        for ev in [sim.create(), sim.buy(1100, 1.0)]:
+            st.emit(ev)
+        self.assertEqual(st.snapshot()["rows"][0]["status"], "holding")
+
+    def test_blacklist_reaches_the_engine_and_blocks_the_creator(self):
+        st = TerminalState(FAST)
+        st.set_running(True)
+        wallet = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+        st.update_settings({"blacklist": [wallet]})
+        sim = Sim("M1", wallet)
+        for ev in [sim.create(), sim.scan(1100), sim.buy(1200, 0.5)]:
+            st.emit(ev)
+        row = st.snapshot()["rows"][0]
+        self.assertEqual((row["status"], row["detail"]), ("skipped", "blacklisted"))
+
+    def test_reset_can_change_the_paper_bankroll(self):
+        st = TerminalState(FAST)
+        st.reset(25)
+        self.assertEqual((st.snapshot()["paper"]["start"], st.snapshot()["paper"]["equity"]), (25.0, 25.0))
+        for bad in (0, -5, 10_000, True, "5", math.nan):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                st.reset(bad)
+        self.assertEqual(st.snapshot()["paper"]["start"], 25.0)
+
+    def test_state_endpoint_ships_presets(self):
+        self.assertIn("steady", TerminalState(FAST).snapshot()["presets"])
+
+    def test_config_screen_has_the_three_real_tabs_and_no_fake_ai_switches(self):
+        src = INDEX.read_text()
+        for tab in ('data-pane="trading"', 'data-pane="safety"', 'data-pane="advanced"', "Save configuration"):
+            self.assertIn(tab, src)
+        self.assertNotIn('k: "ai_', src)
+        self.assertIn("Left out on purpose", src)
+
+
+class ConfigServer(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.state = TerminalState(FAST)
+        cls.srv = make_server(cls.state, "127.0.0.1", 0)
+        cls.port = cls.srv.server_address[1]
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+        cls.srv.server_close()
+
+    def post(self, path, body):
+        r = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(r, timeout=5) as resp:
+                return resp.status, json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read())
+
+    def test_reset_with_bankroll_over_http(self):
+        self.assertEqual(self.post("/api/reset", {"start_sol": 12})[1]["start_sol"], 12.0)
+        code, body = self.post("/api/reset", {"start_sol": 0})
+        self.assertEqual(code, 400)
+        self.assertIn("bankroll", body["error"])
+
+    def test_full_configuration_saves_atomically(self):
+        before = settings_dict(self.state.strategy)
+        code, _ = self.post("/api/settings", {"take_profit": 55, "slippage_pct": 999})
+        self.assertEqual(code, 400)
+        self.assertEqual(settings_dict(self.state.strategy), before)  # nothing half-applied

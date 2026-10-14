@@ -12,11 +12,12 @@ Treat results as an optimistic upper bound.
 
 from __future__ import annotations
 
+import random
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable
 
-from ..pump.curve import CurveState, quote_buy, quote_sell
+from ..pump.curve import VIRTUAL_START_SOL, CurveState, quote_buy, quote_sell
 from ..pump.events import TOTAL_SUPPLY, Event, NewToken, ScanNote, Trade
 
 
@@ -37,6 +38,13 @@ class Strategy:
     allowed_verdicts: frozenset = frozenset({"PASS", "CAUTION"})
     max_dev_buy_pct: float = 15.0
     max_entry_mcap_sol: float = 60.0
+    slippage_pct: float = 10.0      # abort an entry if the fill is this much worse than the price at decision time
+    trailing_stop_pct: float = 0.0  # once in profit, sell after this % drop from the best price seen (0 = off)
+    min_liquidity_sol: float = 0.0  # SOL actually raised on the curve at decision time
+    size_mode: str = "verdict"      # "verdict" (CAUTION=min, else max) | "random" (uniform min..max) | "fixed" (max)
+    auto_compound: bool = False     # scale sizes by equity / starting bankroll
+    use_blacklist: bool = True
+    blacklist: frozenset = frozenset()  # creator wallets never to buy; rugs seen this session are added automatically
 
 
 @dataclass
@@ -49,6 +57,7 @@ class Position:
     entry_mcap: float
     exit_reason: str | None = None
     exit_ready_ms: int | None = None
+    peak_net: float = 0.0  # best net sale value seen while held (for the trailing stop)
 
 
 @dataclass(frozen=True)
@@ -87,6 +96,10 @@ class PaperEngine:
         self.launch: dict[str, NewToken] = {}
         self.scans: dict[str, ScanNote] = {}
         self.pending: dict[str, int] = {}
+        self.pending_state: dict[str, CurveState] = {}  # curve at decision time, for the slippage check
+        self.rng = random.Random(0)  # seeded so a replay is reproducible
+        self.creator_sold: dict[str, float] = {}
+        self.known_ruggers: set[str] = set()
         self.positions: dict[str, Position] = {}
         self.closed: list[ClosedTrade] = []
         self.equity_curve = [start_sol]
@@ -139,29 +152,51 @@ class PaperEngine:
             return
         if not self.enabled:
             self._skip(decision_t, mint, "bot_stopped")
+        elif self.s.use_blacklist and (launch.creator in self.s.blacklist or launch.creator in self.known_ruggers):
+            self._skip(decision_t, mint, "blacklisted")
         elif launch.dev_tokens / TOTAL_SUPPLY * 100 > self.s.max_dev_buy_pct:
             self._skip(decision_t, mint, "dev_buy")
+        elif state.v_sol - VIRTUAL_START_SOL < self.s.min_liquidity_sol:
+            self._skip(decision_t, mint, "low_liquidity")
         elif state.mcap_sol > self.s.max_entry_mcap_sol:
             self._skip(decision_t, mint, "mcap_too_high")
         elif len(self.positions) + len(self.pending) >= self.s.max_open:
             self._skip(decision_t, mint, "max_open")
         else:
             self.pending[mint] = decision_t + self.s.latency_ms
+            self.pending_state[mint] = state
+
+    def _size(self, mint: str, equity: float) -> float:
+        s = self.s
+        if s.size_frac is not None:
+            return equity * s.size_frac
+        lo = s.size_caution_sol if s.size_caution_sol is not None else s.size_sol
+        if s.size_mode == "random":
+            size = self.rng.uniform(lo, s.size_sol)
+        elif s.size_mode == "fixed":
+            size = s.size_sol
+        else:
+            scan = self.scans.get(mint)
+            size = lo if scan is not None and scan.verdict == "CAUTION" else s.size_sol
+        return size * equity / self.start_sol if s.auto_compound else size
 
     def _open(self, mint: str, t: int) -> None:
         state = self.curve[mint]
+        decided = self.pending_state.pop(mint, None)
         if state.mcap_sol > self.s.max_entry_mcap_sol:
             self._skip(t, mint, "mcap_too_high_at_fill")
             return
         equity = self.cash + sum(p.sol_in for p in self.positions.values())
-        scan = self.scans.get(mint)
-        fixed = self.s.size_sol
-        if self.s.size_caution_sol is not None and scan is not None and scan.verdict == "CAUTION":
-            fixed = self.s.size_caution_sol
-        size = equity * self.s.size_frac if self.s.size_frac is not None else fixed
+        size = self._size(mint, equity)
         if self.cash < size + self.s.tx_cost_sol or size <= 0:
             self._skip(t, mint, "no_cash")
             return
+        if decided is not None:
+            expected = quote_buy(decided, size, self.s.fee_bps)
+            slip = (1 - quote_buy(state, size, self.s.fee_bps) / expected) * 100
+            if slip > self.s.slippage_pct:
+                self._skip(t, mint, "slippage")
+                return
         tokens = quote_buy(state, size, self.s.fee_bps)
         self.cash -= size + self.s.tx_cost_sol
         self.positions[mint] = Position(mint, self.launch[mint].creator, t, size, tokens, state.mcap_sol)
@@ -171,6 +206,11 @@ class PaperEngine:
     def _on_trade(self, tr: Trade) -> None:
         state = CurveState(tr.v_sol, tr.v_tokens)
         self.curve[tr.mint] = state
+        launch = self.launch.get(tr.mint)
+        if launch and tr.trader == launch.creator and tr.side == "sell" and launch.dev_tokens > 0:
+            sold = self.creator_sold[tr.mint] = self.creator_sold.get(tr.mint, 0.0) + tr.tokens
+            if sold >= 0.5 * launch.dev_tokens:
+                self.known_ruggers.add(launch.creator)  # dumped half or more of their launch bag
         pos = self.positions.get(tr.mint)
         if pos is None or pos.exit_ready_ms is not None:
             return
@@ -181,9 +221,12 @@ class PaperEngine:
             reason = "graduated"
         else:
             net = quote_sell(state, pos.tokens, self.s.fee_bps) - 2 * self.s.tx_cost_sol
+            pos.peak_net = max(pos.peak_net, net)
             ret = (net / pos.sol_in - 1) * 100
             if ret >= self.s.take_profit_pct:
                 reason = "take_profit"
+            elif self.s.trailing_stop_pct > 0 and pos.peak_net > pos.sol_in and net <= pos.peak_net * (1 - self.s.trailing_stop_pct / 100):
+                reason = "trailing_stop"
             elif ret <= -self.s.stop_loss_pct:
                 reason = "stop_loss"
         if reason:

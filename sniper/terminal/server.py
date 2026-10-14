@@ -76,8 +76,8 @@ def make_server(state: TerminalState, host: str = "127.0.0.1", port: int = 8765)
                 if path == "/api/settings":
                     return self._json(200, {"settings": state.update_settings(data)})
                 if path == "/api/reset":
-                    state.reset()
-                    return self._json(200, {"ok": True})
+                    state.reset(data.get("start_sol"))
+                    return self._json(200, {"ok": True, "start_sol": state.start_sol})
             except ValueError as e:
                 return self._json(400, {"error": str(e)})
             self._json(404, {"error": "not found"})

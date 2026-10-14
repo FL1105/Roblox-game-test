@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from .events import TOTAL_SUPPLY
 
 GRADUATION_V_TOKENS = 280_000_000  # approx: 1.073B virtual - 793.1M sellable
+VIRTUAL_START_SOL = 30.0  # virtual SOL on a fresh curve; anything above it is SOL actually raised
 
 
 @dataclass(frozen=True)

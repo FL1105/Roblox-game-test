@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Launch Sniper · Paper Terminal</title>
+<link rel="icon" href="data:,">
 <style>
 :root{
   --bg:#080d12; --card:#0d151b; --card2:#0a1116; --line:#16252d; --line2:#1d313b;
@@ -120,6 +121,50 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);padding:10px 16px;border-radius:12px;background:#1a0f12;border:1px solid color-mix(in srgb,var(--red) 55%,transparent);color:#ff9aa5;font:12.5px var(--mono);display:none;z-index:9}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 @media (max-width:920px){.layout{grid-template-columns:1fr}.spacer{display:none}.top{gap:12px}}
+
+/* configuration modal */
+.overlay{position:fixed;inset:0;background:rgba(3,7,10,.72);backdrop-filter:blur(3px);display:none;align-items:flex-start;justify-content:center;padding:4vh 16px;z-index:20;overflow:auto}
+.overlay.open{display:flex}
+.modal{width:min(900px,100%);background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--line)}
+.mhead h2{margin:0;font-size:19px;display:flex;align-items:center;gap:10px;color:var(--text)}
+.mhead h2 svg{color:var(--accent)}
+.mbody{padding:18px 22px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:6px;border:1px solid var(--line);border-radius:14px;background:var(--card2);margin-bottom:16px}
+.tabs button{display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border-radius:10px;border:1px solid transparent;background:none;color:var(--muted);cursor:pointer}
+.tabs button.on{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.pane{display:none}.pane.on{display:block}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{border:1px solid var(--line);border-radius:14px;background:var(--card2);padding:14px}
+.field.wide{grid-column:1/-1}
+.field .t{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:600;font-size:14px;margin-bottom:9px}
+.field .h{font-size:12px;color:var(--dim);margin-top:8px}
+.field .t.row{margin-bottom:0}
+.field select.inp,.field input.inp,.field textarea.inp{width:100%}
+textarea.inp{min-height:70px;resize:vertical;font-size:12px}
+.sw{position:relative;width:46px;height:26px;flex:none}
+.sw input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.sw i{position:absolute;inset:0;border-radius:99px;background:#1b2a32;transition:.15s;pointer-events:none}
+.sw i::after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;background:var(--muted);transition:.15s}
+.sw input:checked+i{background:var(--accent)}.sw input:checked+i::after{left:23px;background:var(--accent-ink)}
+.sw input:focus-visible+i{outline:2px solid var(--accent);outline-offset:2px}
+.presets{border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:14px}
+.presets .ph{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px}
+.presets .ph b{font-size:15px}.presets .ph span{font-size:12px;color:var(--dim)}
+.pcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.pc{position:relative;text-align:left;padding:14px;border-radius:14px;border:1px solid var(--line2);background:var(--card2);cursor:pointer;color:var(--text)}
+.pc:hover,.pc.on{border-color:color-mix(in srgb,var(--accent) 60%,transparent);background:color-mix(in srgb,var(--accent) 7%,var(--card2))}
+.pc b{display:block;font-size:15px;margin-bottom:3px}.pc small{display:block;color:var(--muted);font-size:12px;min-height:32px}
+.pc .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+.pc .chips span{font:10.5px var(--mono);padding:3px 8px;border-radius:99px;border:1px solid var(--line2);color:var(--muted)}
+.pc .tag{position:absolute;top:-9px;right:12px;font:9.5px var(--mono);letter-spacing:.12em;padding:3px 9px;border-radius:99px;background:var(--accent);color:var(--accent-ink);font-weight:700}
+.info{padding:13px 15px;border:1px dashed var(--line2);border-radius:14px;color:var(--muted);font-size:12.5px;line-height:1.55}
+.info b{color:var(--text)}
+.mfoot{display:flex;justify-content:flex-end;align-items:center;gap:14px;padding:16px 22px;border-top:1px solid var(--line)}
+.mfoot .btn{padding:12px 20px}
+.toast.ok{background:#0d1a14;border-color:color-mix(in srgb,var(--good) 55%,transparent);color:var(--good)}
+.toast{z-index:40}
+@media (max-width:700px){.fgrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -138,6 +183,7 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
     <div class="pill" id="modepill"><span class="dot" id="modedot"></span><span id="modetext">CONNECTING</span></div>
     <div class="icons">
       <button class="ibtn" id="b-home" title="Dashboard" aria-label="Dashboard"><span data-ic="home"></span></button>
+      <button class="ibtn" id="b-cfg" title="Bot configuration" aria-label="Bot configuration"><span data-ic="gear"></span></button>
       <button class="ibtn" id="b-theme" title="Change accent colour" aria-label="Change accent colour"><span data-ic="palette"></span></button>
       <button class="ibtn" id="b-refresh" title="Refresh now" aria-label="Refresh now"><span data-ic="refresh"></span></button>
       <button class="ibtn" id="b-full" title="Fullscreen" aria-label="Fullscreen"><span data-ic="full"></span></button>
@@ -168,23 +214,6 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
         <label class="lbl" for="stop_loss">Stop loss (%)</label>
         <input class="inp" id="stop_loss" inputmode="decimal">
         <button class="btn ghost adv" id="advbtn"><span data-ic="sliders"></span>Advanced Settings</button>
-        <div class="advbox" id="advbox">
-          <div class="grid2">
-            <div><label class="lbl" for="max_hold_s">Max hold (s)</label><input class="inp" id="max_hold_s" inputmode="decimal"></div>
-            <div><label class="lbl" for="max_open">Max open</label><input class="inp" id="max_open" inputmode="decimal"></div>
-            <div><label class="lbl" for="latency_ms">Latency (ms)</label><input class="inp" id="latency_ms" inputmode="decimal"></div>
-            <div><label class="lbl" for="fee_bps">Fee (bps)</label><input class="inp" id="fee_bps" inputmode="decimal"></div>
-            <div><label class="lbl" for="tx_cost_sol">Tx cost (SOL)</label><input class="inp" id="tx_cost_sol" inputmode="decimal"></div>
-            <div><label class="lbl" for="max_dev_buy_pct">Max dev buy (%)</label><input class="inp" id="max_dev_buy_pct" inputmode="decimal"></div>
-          </div>
-          <label class="lbl" for="max_entry_mcap_sol">Max entry market cap (SOL)</label>
-          <input class="inp" id="max_entry_mcap_sol" inputmode="decimal">
-          <span class="lbl">Buy these scanner verdicts</span>
-          <label class="chk"><input type="checkbox" class="verdict" value="PASS"> PASS</label>
-          <label class="chk"><input type="checkbox" class="verdict" value="CAUTION"> CAUTION</label>
-          <label class="chk"><input type="checkbox" class="verdict" value="AVOID"> AVOID</label>
-          <label class="chk"><input type="checkbox" id="exit_on_creator_sell"> Exit when the creator sells</label>
-        </div>
       </section>
 
       <section class="card">
@@ -223,7 +252,9 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
         <div class="prof">
           <div class="card"><div class="cardhead"><h2>Paper account</h2></div><div class="kv" id="acct"></div>
             <div class="spark" id="spark-big" style="margin-top:18px"></div>
-            <button class="btn ghost" id="reset" style="margin-top:16px;width:100%">Reset paper account</button></div>
+            <label class="lbl" for="bankroll">Paper bankroll (SOL)</label>
+            <input class="inp" id="bankroll" inputmode="decimal" value="1">
+            <button class="btn ghost" id="reset" style="margin-top:12px;width:100%">Reset paper account</button></div>
           <div class="card"><div class="cardhead"><h2>Why trades were skipped</h2></div><div class="kv" id="skips"></div></div>
           <div class="card"><div class="cardhead"><h2>What this is</h2></div>
             <p class="mut" style="margin:0;font-size:13px">A paper-trading simulator. It models the pump.fun fee, a per-transaction cost and a delay between decision and fill, but not other bots racing you or dropped transactions. Real results would be worse than what you see here.</p></div>
@@ -231,6 +262,22 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
       </div>
     </section>
   </main>
+</div>
+<div class="overlay" id="cfg" role="dialog" aria-modal="true" aria-labelledby="cfgtitle">
+  <div class="modal">
+    <div class="mhead"><h2 id="cfgtitle"><span data-ic="gear"></span>Bot Configuration</h2><button class="ibtn" id="cfgx" aria-label="Close"><span data-ic="x"></span></button></div>
+    <div class="mbody">
+      <div class="tabs" id="cfgtabs" role="tablist">
+        <button data-pane="trading" class="on" role="tab"><span data-ic="chart"></span>Trading</button>
+        <button data-pane="safety" role="tab"><span data-ic="shield"></span>Safety</button>
+        <button data-pane="advanced" role="tab"><span data-ic="brain"></span>Advanced</button>
+      </div>
+      <div class="pane on" id="pane-trading"></div>
+      <div class="pane" id="pane-safety"></div>
+      <div class="pane" id="pane-advanced"></div>
+    </div>
+    <div class="mfoot"><button class="btn ghost" id="cfgcancel" style="border:0;background:none">Cancel</button><button class="btn go" id="cfgsave"><span data-ic="save"></span>Save configuration</button></div>
+  </div>
 </div>
 <div class="toast" id="toast" role="alert"></div>
 
@@ -242,7 +289,7 @@ const IC = {
   home:'<path d="M4 11l8-7 8 7v9H4z"/>', palette:'<path d="M12 3a9 9 0 100 18c1.5 0 2-1 1.5-2s0-2 1.5-2h2a3 3 0 003-3c0-5-4-11-8-11z"/><circle cx="8" cy="11" r="1"/><circle cx="12" cy="7.5" r="1"/><circle cx="16" cy="11" r="1"/>',
   refresh:'<path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/>', full:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>', wallet:'<path d="M3 7h16a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2zM3 7l2-3h12M16 14h2"/>',
   bot:'<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4M9 13h.01M15 13h.01M3 13v3M21 13v3"/>', play:'<path d="M7 5l12 7-12 7z" fill="currentColor"/>', stopsq:'<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>',
-  sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/>', search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'
+  sliders:'<path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M6 14v6"/>', gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>', x:'<path d="M6 6l12 12M18 6L6 18"/>', shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>', brain:'<path d="M9 4a3 3 0 00-3 3 3 3 0 00-2 5 3 3 0 002 5 3 3 0 006 0V4a3 3 0 00-3 0zM15 4a3 3 0 013 3 3 3 0 012 5 3 3 0 01-2 5 3 3 0 01-6 0"/>', save:'<path d="M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6"/>', search:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>'
 };
 const svg = (name, size) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[name]}</svg>`;
 document.querySelectorAll("[data-ic]").forEach(n => { n.innerHTML = svg(n.dataset.ic, +(n.dataset.size || 18)); n.style.display = "inline-flex"; });
@@ -254,8 +301,8 @@ const signed = (x, d = 3) => (x == null ? "—" : (x >= 0 ? "+" : "") + Number(x
 const hhmmss = (ms) => ms ? new Date(ms).toLocaleTimeString([], {hour12: false}) : "—";
 const MINT_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-let last = null, settingsLoaded = false, view = "dashboard";
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", 3500); }
+let last = null, settingsLoaded = false, bankrollLoaded = false, view = "dashboard";
+function toast(msg, ok) { const t = $("toast"); t.textContent = msg; t.className = "toast" + (ok ? " ok" : ""); t.style.display = "block"; clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = "none", 3500); }
 async function api(path, body) {
   const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
   const j = await r.json(); if (!r.ok) throw new Error(j.error || "request failed"); return j;
@@ -272,38 +319,159 @@ const THEMES = ["emerald", "cyan", "amber"];
 function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch (e) {} }
 try { const t = localStorage.getItem("theme"); if (THEMES.includes(t)) setTheme(t); } catch (e) {}
 $("b-theme").onclick = () => setTheme(THEMES[(THEMES.indexOf(document.documentElement.dataset.theme) + 1) % THEMES.length]);
-$("advbtn").onclick = () => $("advbox").classList.toggle("open");
 
 /* ---- bot control & settings ---- */
 async function setRunning(r) { try { await api("/api/bot", {running: r}); poll(); } catch (e) { toast(e.message); } }
 $("start").onclick = $("start2").onclick = () => setRunning(true);
 $("stop").onclick = () => setRunning(false);
-$("reset").onclick = async () => { if (confirm("Reset the paper account, token table and logs?")) { await api("/api/reset"); poll(); } };
+$("reset").onclick = async () => {
+  const start = Number($("bankroll").value);
+  if (!confirm("Reset the paper account, token table and logs?")) return;
+  try { await api("/api/reset", {start_sol: start}); bankrollLoaded = false; poll(); } catch (e) { toast(e.message); }
+};
 $("range").onchange = () => poll();
 
-const NUM_FIELDS = ["amount_min", "amount_max", "take_profit", "stop_loss", "max_hold_s", "max_open", "latency_ms", "fee_bps", "tx_cost_sol", "max_dev_buy_pct", "max_entry_mcap_sol"];
-function fillSettings(s) {
-  NUM_FIELDS.forEach(k => { if (document.activeElement !== $(k)) $(k).value = s[k]; });
-  document.querySelectorAll(".verdict").forEach(c => c.checked = s.verdicts.includes(c.value));
-  $("exit_on_creator_sell").checked = s.exit_on_creator_sell;
-}
-function collectSettings() {
-  const out = {};
-  for (const k of NUM_FIELDS) { const v = $(k).value.trim(); out[k] = v === "" ? NaN : Number(v); }
-  out.verdicts = [...document.querySelectorAll(".verdict")].filter(c => c.checked).map(c => c.value);
-  out.exit_on_creator_sell = $("exit_on_creator_sell").checked;
-  return out;
-}
+/* quick fields in the left panel apply live; the full configuration screen is staged until Save */
+const QUICK = ["amount_min", "amount_max", "take_profit", "stop_loss"];
+function fillQuick(st) { QUICK.forEach(k => { if (document.activeElement !== $(k)) $(k).value = st[k]; }); }
 let saveTimer;
 function scheduleSave() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    const body = collectSettings();
-    if (Object.values(body).some(v => typeof v === "number" && Number.isNaN(v))) return toast("Enter a number in every box");
+    const body = {};
+    for (const k of QUICK) { const v = $(k).value.trim(); body[k] = v === "" ? NaN : Number(v); }
+    if (Object.values(body).some(Number.isNaN)) return toast("Enter a number in every box");
     try { await api("/api/settings", body); } catch (e) { toast(e.message); settingsLoaded = false; }
   }, 500);
 }
-[...NUM_FIELDS.map($), ...document.querySelectorAll(".verdict"), $("exit_on_creator_sell")].forEach(n => n.addEventListener("change", scheduleSave));
+QUICK.forEach(k => $(k).addEventListener("change", scheduleSave));
+
+/* ---- Bot Configuration screen ---- */
+const HOLD = [[60, "1 minute"], [300, "5 minutes"], [900, "15 minutes"], [1800, "30 minutes"], [3600, "60 minutes"]];
+const SPEED = [[300, "Instant: 0.3 s delay"], [800, "Fast: 0.8 s delay"], [2000, "Normal: 2 s delay"], [5000, "Slow: 5 s delay"]];
+const MODES = [["verdict", "By verdict (CAUTION = min)"], ["random", "Random in range"], ["fixed", "Fixed (always the maximum)"]];
+const RISK = [["low", "Low risk: only PASS tokens"], ["medium", "Medium risk: PASS + CAUTION"], ["high", "High risk: PASS + CAUTION + AVOID"]];
+const RISK_SETS = {low: ["PASS"], medium: ["PASS", "CAUTION"], high: ["PASS", "CAUTION", "AVOID"]};
+const TABS = {
+  trading: [
+    {k: "amount_min", t: "num", l: "Minimum Amount (SOL)", h: "Smallest position. CAUTION tokens use this in 'by verdict' mode."},
+    {k: "amount_max", t: "num", l: "Maximum Amount (SOL)", h: "Largest position. Big buys move a fresh curve a lot, and the simulator charges you for it."},
+    {k: "slippage_pct", t: "num", l: "Slippage Tolerance (%)", h: "Skip the buy if the fill is this much worse than the price when the bot decided."},
+    {k: "take_profit", t: "num", l: "Take Profit (%)", h: "Sell once the gain, after fees and costs, reaches this."},
+    {k: "stop_loss", t: "num", l: "Stop Loss (%)", h: "Sell once the loss, after fees and costs, reaches this."},
+    {k: "max_dev_buy_pct", t: "num", l: "Max Dev Hold (%)", h: "Skip tokens where the creator bought more than this share of supply at launch."},
+    {k: "min_liquidity_sol", t: "num", l: "Min Liquidity (SOL)", h: "SOL actually raised on the curve. Brand-new tokens have about 0, so a high floor skips nearly every fresh launch."},
+    {k: "max_open", t: "num", l: "Max Concurrent Positions", h: "How many open trades the bot holds at once."},
+    {k: "trailing_stop_pct", t: "num", l: "Trailing Stop (%)", h: "Once in profit, sell after this % drop from the best price. 0 = off."},
+    {k: "size_mode", t: "sel", opts: MODES, l: "Position Size Mode", h: "How the bot picks a size between the minimum and maximum."},
+    {k: "auto_compound", t: "tog", l: "Auto-compound", h: "Scale position sizes with your paper bankroll: grow after wins, shrink after losses."},
+    {k: "use_blacklist", t: "tog", l: "Use wallet blacklist", h: "Skip creators on your list below, plus any creator seen dumping this session."},
+    {k: "blacklist", t: "wallets", l: "Blacklisted creator wallets", h: "One address per line (up to 200)."}
+  ],
+  safety: [
+    {k: "honeypot_detection", t: "tog", l: "Honeypot Detection", h: "Only buy tokens the scanner has cleared. Off = skip the scan and buy on the other rules alone."},
+    {k: "exit_on_creator_sell", t: "tog", l: "Rug Pull Protection", h: "Sell right away when the token's creator sells (checked on every trade)."},
+    {k: "latency_ms", t: "sel", opts: SPEED, l: "Trading Speed", h: "Delay between deciding and filling. Slower means the price has longer to move against you."},
+    {k: "max_hold_s", t: "sel", opts: HOLD, l: "Max Hold Time", h: "Sell after this long if neither target is hit. A token is only priced while the recorder follows it (10 min by default)."}
+  ],
+  advanced: [
+    {k: "risk", t: "sel", opts: RISK, l: "Risk Tolerance", h: "Which scanner verdicts the bot is allowed to buy."},
+    {k: "max_entry_mcap_sol", t: "num", l: "Max Entry Market Cap (SOL)", h: "Don't chase: skip tokens already above this market cap. A fresh launch starts near 28."},
+    {k: "fee_bps", t: "num", l: "Exchange Fee (bps)", h: "100 bps = 1% on each buy and sell. Check pump.fun's current rate."},
+    {k: "tx_cost_sol", t: "num", l: "Cost per Transaction (SOL)", h: "Priority fee + tip paid on each buy and each sell."},
+    {k: "_note", t: "note"}
+  ]
+};
+const ctl = {};  // key -> {get(): value, set(value)}
+
+function fieldEl(f) {
+  const box = el("div", "field" + (f.t === "wallets" || f.t === "note" ? " wide" : ""));
+  if (f.t === "note") {
+    box.className = "info wide"; box.style.gridColumn = "1/-1";
+    const b = el("b", "", "Left out on purpose: "); box.append(b, document.createTextNode("\"AI market analysis\", \"Smart entry/exit\" and an \"AI agent\" appear on the site you based this on, but none of them says what it actually does, so there is nothing to test. Every control here maps to a rule the simulator really applies. If you want a learned model later, the honest way is to train it on the recorded launches and let the sweep check it on data it hasn't seen."));
+    return box;
+  }
+  const title = el("div", "t" + (f.t === "tog" ? " row" : ""), f.l);
+  box.append(title);
+  if (f.t === "tog") {
+    const sw = el("label", "sw"), cb = document.createElement("input"); cb.type = "checkbox"; cb.setAttribute("aria-label", f.l);
+    sw.append(cb, el("i")); title.append(sw); ctl[f.k] = {get: () => cb.checked, set: (v) => { cb.checked = !!v; }};
+  } else if (f.t === "sel") {
+    const sel = document.createElement("select"); sel.className = "inp"; sel.setAttribute("aria-label", f.l);
+    f.opts.forEach(([v, text]) => { const o = el("option", "", text); o.value = String(v); sel.append(o); });
+    const numeric = typeof f.opts[0][0] === "number";
+    box.append(sel);
+    ctl[f.k] = {
+      get: () => sel.value === "custom" ? undefined : (numeric ? Number(sel.value) : sel.value),
+      set: (v) => {
+        sel.querySelectorAll("option[data-custom]").forEach(o => o.remove());
+        if (![...sel.options].some(o => o.value === String(v))) { const o = el("option", "", "Custom: " + (Array.isArray(v) ? v.join(", ") : v)); o.value = "custom"; o.dataset.custom = "1"; sel.append(o); sel.value = "custom"; }
+        else sel.value = String(v);
+      }
+    };
+  } else if (f.t === "wallets") {
+    const ta = document.createElement("textarea"); ta.className = "inp"; ta.setAttribute("aria-label", f.l); ta.spellcheck = false; ta.placeholder = "creator wallet address";
+    box.append(ta);
+    ctl[f.k] = {get: () => [...new Set(ta.value.split(/[\s,]+/).filter(Boolean))], set: (v) => { ta.value = (v || []).join("\n"); }};
+  } else {
+    const inp = document.createElement("input"); inp.className = "inp"; inp.inputMode = "decimal"; inp.setAttribute("aria-label", f.l);
+    box.append(inp); ctl[f.k] = {get: () => inp.value.trim() === "" ? NaN : Number(inp.value), set: (v) => { inp.value = v; }};
+  }
+  if (f.h) box.append(el("div", "h", f.h));
+  return box;
+}
+
+let cfgBuilt = false, presetEls = {};
+function buildCfg() {
+  if (cfgBuilt) return; cfgBuilt = true;
+  for (const [pane, fields] of Object.entries(TABS)) {
+    const host = $("pane-" + pane); const grid = el("div", "fgrid");
+    fields.forEach(f => grid.append(fieldEl(f)));
+    host.append(grid);
+  }
+  document.querySelectorAll("#cfgtabs button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("#cfgtabs button").forEach(x => x.classList.toggle("on", x === b));
+    document.querySelectorAll(".pane").forEach(x => x.classList.toggle("on", x.id === "pane-" + b.dataset.pane));
+  });
+}
+function fillCfg(st) {
+  for (const [k, c] of Object.entries(ctl)) {
+    if (k === "risk") { const v = st.verdicts, key = Object.keys(RISK_SETS).find(r => RISK_SETS[r].length === v.length && RISK_SETS[r].every(x => v.includes(x))); c.set(key || v); }
+    else if (k in st) c.set(st[k]);
+  }
+}
+function buildPresets(presets) {
+  const host = $("pane-trading"); host.querySelector(".presets")?.remove();
+  const box = el("div", "presets"), head = el("div", "ph"); head.append(el("b", "", "Strategy presets"), el("span", "", "One-click load. You can tweak any field afterwards."));
+  const cards = el("div", "pcards"); presetEls = {};
+  for (const [id, p] of Object.entries(presets)) {
+    const c = el("button", "pc"); c.type = "button";
+    if (p.tag) c.append(el("span", "tag", p.tag));
+    const st = p.settings, chips = el("div", "chips");
+    [`${st.amount_min}-${st.amount_max} SOL`, `TP ${st.take_profit}%`, `SL ${st.stop_loss}%`].forEach(t => chips.append(el("span", "", t)));
+    c.append(el("b", "", p.label), el("small", "", p.blurb), chips);
+    c.onclick = () => { fillCfg({...st}); Object.values(presetEls).forEach(x => x.classList.remove("on")); c.classList.add("on"); };
+    presetEls[id] = c; cards.append(c);
+  }
+  box.append(head, cards); host.insertBefore(box, host.firstChild);
+}
+function openCfg() { buildCfg(); if (last) { buildPresets(last.presets); fillCfg(last.settings); } $("cfg").classList.add("open"); $("cfgsave").focus({preventScroll: true}); }
+function closeCfg() { $("cfg").classList.remove("open"); }
+async function saveCfg() {
+  const body = {};
+  for (const [k, c] of Object.entries(ctl)) {
+    const v = c.get();
+    if (k === "risk") { if (v !== undefined) body.verdicts = RISK_SETS[v]; }
+    else if (v !== undefined) body[k] = v;
+  }
+  if (Object.entries(body).some(([k, v]) => typeof v === "number" && Number.isNaN(v))) return toast("Enter a number in every box");
+  try { await api("/api/settings", body); closeCfg(); settingsLoaded = false; await poll(); toast("Configuration saved", true); } catch (e) { toast(e.message); }
+}
+$("advbtn").onclick = $("b-cfg").onclick = openCfg;
+$("cfgx").onclick = $("cfgcancel").onclick = closeCfg;
+$("cfgsave").onclick = saveCfg;
+$("cfg").addEventListener("mousedown", (e) => { if (e.target === $("cfg")) closeCfg(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeCfg(); });
 
 /* ---- equity sparkline: one series, thin line, hover readout, no legend needed ---- */
 function sparkline(host, ys, start) {
@@ -332,8 +500,8 @@ function sparkline(host, ys, start) {
 }
 
 /* ---- rows ---- */
-const CLOSED = {take_profit: ["TAKE PROFIT", "g"], stop_loss: ["STOP LOSS", "r"], creator_sold: ["CREATOR SOLD", "r"], timeout: ["TIMED OUT", "a"], graduated: ["GRADUATED", "g"], end_of_data: ["CLOSED", ""]};
-const SKIPS = {bot_stopped: "BOT STOPPED", dev_buy: "DEV BUY", max_open: "MAX OPEN", mcap_too_high: "TOO LATE", mcap_too_high_at_fill: "TOO LATE", no_cash: "NO CASH"};
+const CLOSED = {trailing_stop: ["TRAILING STOP", "g"], take_profit: ["TAKE PROFIT", "g"], stop_loss: ["STOP LOSS", "r"], creator_sold: ["CREATOR SOLD", "r"], timeout: ["TIMED OUT", "a"], graduated: ["GRADUATED", "g"], end_of_data: ["CLOSED", ""]};
+const SKIPS = {slippage: "SLIPPAGE", low_liquidity: "LOW LIQUIDITY", blacklisted: "BLACKLISTED", bot_stopped: "BOT STOPPED", dev_buy: "DEV BUY", max_open: "MAX OPEN", mcap_too_high: "TOO LATE", mcap_too_high_at_fill: "TOO LATE", no_cash: "NO CASH"};
 function statusChip(r) {
   switch (r.status) {
     case "holding": return ["HOLDING", "g"];
@@ -390,7 +558,8 @@ function render(s) {
   $("emptytext").textContent = err ? s.feed_status : s.simulated ? "Waiting for tokens from the demo market" : s.source.startsWith("live") ? "Waiting for new tokens from Pump.fun to start trading" : "Waiting for the replay to begin";
   $("walletline").textContent = `${fmt(s.paper.equity)} SOL · ${s.paper.open} open`;
 
-  if (!settingsLoaded) { fillSettings(s.settings); settingsLoaded = true; }
+  if (!settingsLoaded) { fillQuick(s.settings); settingsLoaded = true; }
+  if (!bankrollLoaded) { $("bankroll").value = s.paper.start; bankrollLoaded = true; }
   const st = s.stats;
   $("s-trades").textContent = st.trades; $("s-wins").textContent = st.wins; $("s-rate").textContent = Math.round(st.win_rate) + "%";
   const p = $("s-pnl"); p.textContent = signed(st.pnl_sol); p.className = "v " + (st.pnl_sol > 0 ? "pos" : st.pnl_sol < 0 ? "neg" : "");
@@ -418,6 +587,7 @@ async function poll() {
 }
 document.querySelectorAll("#nav button").forEach(b => b.addEventListener("click", () => last && render(last)));
 if (/^#(dashboard|logs|profile)$/.test(location.hash)) show(location.hash.slice(1));
+if (/^#config/.test(location.hash)) { const w = setInterval(() => { if (last) { clearInterval(w); openCfg(); const tab = location.hash.split(":")[1]; if (tab) document.querySelector(`#cfgtabs button[data-pane=${tab}]`)?.click(); } }, 100); }
 poll(); setInterval(poll, 1000);
 </script>
 </body>

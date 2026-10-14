@@ -4,7 +4,7 @@ Four read-only tools that build on each other. **None of them holds a wallet, a 
 Python 3.10+, standard library only (the live listener also needs `websockets`).
 
 ```
-python -m unittest discover -s tests -t .            # 127 tests, no network needed
+python -m unittest discover -s tests -t .            # 156 tests, no network needed
 python -m sniper.scanner <mint> [--json]             # 1. scan one token
 python -m sniper.listener --events launches.jsonl    # 2. record live launches + verdicts
 python -m sniper.paper replay launches.jsonl         # 3. paper-trade the recording
@@ -33,6 +33,20 @@ python -m sniper.terminal --live --rpc URL       # real launches, still paper tr
 - The server refuses foreign `Host` headers and non-JSON POSTs, and the page renders chain data (token names)
   with `textContent` only, since token names are attacker-controlled.
 - Demo data is synthetic; its P&L and scanner accuracy are invented.
+
+**Bot Configuration** (gear icon, or "Advanced Settings"): Trading / Safety / Advanced tabs, one-click presets
+(Steady = the 30% goal, Safe, Balanced, Aggressive, Degen) and a paper bankroll you can set to any amount
+(Profile tab), so you can try settings with no deposit. Every control maps to a rule the simulator applies:
+take-profit, stop-loss, trailing stop, slippage tolerance (aborts a buy that fills too far from the decision
+price), min liquidity (SOL raised on the curve), max dev hold, max concurrent positions, position-size mode
+(by verdict / random in range / fixed), auto-compound, wallet blacklist (plus any creator seen dumping),
+honeypot detection (require a scanner clearance), rug-pull protection (exit when the creator sells), trading
+speed (decision-to-fill delay), max hold time, and risk tolerance (which verdicts may be bought).
+The "AI market analysis / smart entry-exit / AI agent" switches from the site that inspired the layout are
+deliberately absent: they define no behaviour to test.
+
+Browser click test: `python -m sniper.terminal --no-browser &`, then `npm i playwright-core` and
+`node e2e/terminal_click_test.js` (see the file header; it changes that instance's settings).
 
 ## Suggested workflow
 
