@@ -151,21 +151,27 @@ class Collector:
         return f"tracking {len(self.tasks)} | {self.stats} | jupiter {self.jup.stats} @ {self.jup.rps:.1f} rps | {ce}"
 
 
-async def run(out_path: str, minutes: float, rps: float = 12.0, observe_s: float = 600) -> None:
+async def run(out_path: str, minutes: float, rps: float = 12.0, observe_s: float = 600, *, connect=None, jup=None, sleep=asyncio.sleep, clock=time.time) -> None:
+    """Record launches until `minutes` are up. A dropped or refused connection never ends the run: it is retried with backoff, and the
+    outage is written to the file as a `gap` row (and a `resume` row when the feed returns) so later analysis knows launches were missed."""
     import websockets
 
     loop = asyncio.get_running_loop()
     loop.set_default_executor(ThreadPoolExecutor(24))
-    rec, jup = Recorder(out_path), JupiterQuotes(rps=rps)
-    col = Collector(jup, rec, observe_s=observe_s)
-    deadline, last_print, delay = time.time() + minutes * 60, 0.0, 1.0
+    connect = connect or (lambda: websockets.connect(PUMPPORTAL_URL, open_timeout=15))
+    rec, jup = Recorder(out_path), jup or JupiterQuotes(rps=rps)
+    col = Collector(jup, rec, observe_s=observe_s, clock=clock)
+    deadline, last_print, delay, in_gap = clock() + minutes * 60, 0.0, 1.0, False
     try:
-        while time.time() < deadline:
+        while clock() < deadline:
             try:
-                async with websockets.connect(PUMPPORTAL_URL, open_timeout=15) as ws:
+                async with connect() as ws:
                     await ws.send(json.dumps({"method": "subscribeNewToken"}))
                     delay = 1.0
-                    while time.time() < deadline:
+                    if in_gap:
+                        rec.write({"k": "resume", "t": col.now_ms()})
+                        in_gap = False
+                    while clock() < deadline:
                         try:
                             raw = await asyncio.wait_for(ws.recv(), 30)
                         except asyncio.TimeoutError:
@@ -175,12 +181,15 @@ async def run(out_path: str, minutes: float, rps: float = 12.0, observe_s: float
                                 col.on_create(json.loads(raw))
                             except (ValueError, KeyError, TypeError):
                                 pass
-                        if time.time() - last_print > 60:
-                            last_print = time.time()
+                        if clock() - last_print > 60:
+                            last_print = clock()
                             print(time.strftime("%H:%M:%S"), col.summary(), flush=True)
-            except (OSError, websockets.ConnectionClosed) as e:
-                print("feed dropped:", e, f"(retry in {delay:.0f}s)", flush=True)
-                await asyncio.sleep(delay)
+            except (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException) as e:  # includes a handshake the server refuses (HTTP 502)
+                if not in_gap:
+                    rec.write({"k": "gap", "t": col.now_ms(), "why": repr(e)[:120]})
+                    in_gap = True
+                print("feed dropped:", repr(e)[:200], f"(retry in {delay:.0f}s)", flush=True)
+                await sleep(delay)
                 delay = min(delay * 2, 30)
     finally:
         for t in list(col.tasks.values()):

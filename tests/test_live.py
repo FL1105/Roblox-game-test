@@ -1,4 +1,6 @@
 import asyncio
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -254,6 +256,87 @@ class Unpriceable(unittest.TestCase):
         ]
         self.assertEqual(unpriceable(rows), {"MAYHEM", "OFF", "LEGACY"})
         self.assertEqual({e.mint for e in to_events(rows)}, {"OK"})
+        self.assertEqual(list(token_paths(rows)), ["OK"])
+
+
+class FakeSocket:
+    """A PumpPortal connection that delivers one launch and then goes quiet (each quiet wait costs 31 fake seconds)."""
+
+    def __init__(self, now, messages):
+        self.now, self.messages, self.sent = now, list(messages), []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def send(self, text):
+        self.sent.append(text)
+
+    async def recv(self):
+        if self.messages:
+            return json.dumps(self.messages.pop(0))
+        self.now[0] += 31
+        raise asyncio.TimeoutError
+
+
+class FeedReconnect(unittest.TestCase):
+    """A flaky feed must never end a long unattended recording (it once did: the server answered the handshake with HTTP 502)."""
+
+    def run_feed(self, failures, minutes=4.0):
+        from websockets.datastructures import Headers
+        from websockets.exceptions import InvalidStatus
+        from websockets.http11 import Response
+        from sniper.live.collector import run
+
+        now = [1000.0]
+        slept = []
+        failures = [InvalidStatus(Response(502, "Bad Gateway", Headers(), b"")) if f == "502" else f for f in failures]
+        socket = FakeSocket(now, [{"txType": "create", "mint": "NEW1", "traderPublicKey": "C", "pool": "pump", "vSolInBondingCurve": 30.0, "vTokensInBondingCurve": 1_073_000_000.0,
+                                   "symbol": "S", "name": "N", "initialBuy": 0, "solAmount": 0}])
+        attempts = []
+
+        def connect():
+            attempts.append(1)
+            if failures:
+                raise failures.pop(0)
+            return socket
+
+        async def sleep(d):
+            slept.append(d)
+            now[0] += d
+            await asyncio.sleep(0)
+
+        path = tempfile.mktemp(suffix=".jsonl")
+        with contextlib.redirect_stdout(io.StringIO()):  # the recorder prints a status line every minute of its (fake) clock
+            asyncio.run(run(path, minutes, connect=connect, jup=FakeJupiter(lambda: now[0]), sleep=sleep, clock=lambda: now[0]))
+        return read_raw(path), slept, len(attempts), socket
+
+    def test_refused_handshakes_and_resets_are_retried_with_backoff_and_marked_as_one_gap(self):
+        rows, slept, attempts, socket = self.run_feed(["502", OSError("connection reset"), asyncio.TimeoutError(), "502"])
+        self.assertEqual(attempts, 5)
+        self.assertEqual(slept[:4], [1.0, 2.0, 4.0, 8.0])
+        kinds = [r["k"] for r in rows]
+        self.assertEqual(kinds.count("gap"), 1)       # one outage, however many retries it took
+        self.assertEqual(kinds.count("resume"), 1)
+        self.assertLess(kinds.index("gap"), kinds.index("resume"))
+        self.assertIn("create", kinds)                # and the feed was used afterwards
+        self.assertEqual(json.loads(socket.sent[0]), {"method": "subscribeNewToken"})
+        self.assertIn("InvalidStatus", next(r for r in rows if r["k"] == "gap")["why"])
+
+    def test_a_healthy_feed_writes_no_gap(self):
+        rows, slept, attempts, _ = self.run_feed([])
+        self.assertEqual((attempts, [r["k"] for r in rows if r["k"] in ("gap", "resume")]), (1, []))
+
+    def test_the_backoff_is_capped(self):
+        _, slept, _, _ = self.run_feed([OSError("x")] * 8, minutes=30)
+        self.assertEqual(max(slept[:8]), 30)
+
+    def test_analysis_ignores_gap_and_resume_rows(self):
+        rows = [create_row("OK"), {"k": "gap", "t": 5, "why": "x"}, {"k": "obs", "t": 6, "mint": "OK", "v_sol": 31.0, "v_tokens": K0 / 31.0}, {"k": "resume", "t": 9}]
+        self.assertEqual(unpriceable(rows), set())
+        self.assertEqual(len(to_events(rows)), 2)
         self.assertEqual(list(token_paths(rows)), ["OK"])
 
 

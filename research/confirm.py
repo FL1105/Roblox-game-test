@@ -79,7 +79,7 @@ def run(args) -> dict:
     for name, h in spec["set_hashes"].items():
         if name not in FEATURE_SETS or file_hash(FEATURE_SETS[name].__code__.co_filename) != h:
             raise SystemExit(f"feature set '{name}' changed since freezing")
-    hold_tokens = load([args.holdout], unseal=True)
+    hold_tokens = load([h for h in args.holdout.split(",") if h], unseal=True)  # a recording may be in several segments
     hold = Lab(tokens=hold_tokens, ledger_dir="/tmp/holdout_ledger", cache_dir="/tmp/holdout_cache")
     feats = spec["features"]
     delay, policy, cost, q = spec["delay_s"], spec["policy"], spec["cost"], spec["q"]
