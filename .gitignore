@@ -6,3 +6,4 @@ __pycache__/
 *.jsonl
 *.db
 data/*.log
+data/*.pid
