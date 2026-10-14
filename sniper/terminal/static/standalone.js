@@ -135,6 +135,7 @@ function defaultStrategyFields() {
     trailing_stop_pct: 0, min_liquidity_sol: 0, size_mode: "verdict", auto_compound: false, use_blacklist: true, blacklist: [],
     exit_mode: "targets", smart: null, entry_mode: "snipe", confirm_gain_pct: 10, confirm_min_flow_sol: 0, confirm_window_s: 60,
     min_trades: 0, max_token_age_s: 3600, max_entry_gain_pct: 100000, max_creator_launches: 1000, block_collapsed_creators: false,
+    ladder: [], ladder_breakeven_stop: true,
   };
 }
 const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -269,7 +270,8 @@ class PaperEngine {
     }
     const tokens = quoteBuy(state, size, this.s.fee_bps);
     this.cash -= size + this.s.tx_cost_sol;
-    this.positions.set(mint, { mint, creator: this.launch.get(mint).creator, entry_t: t, sol_in: size, tokens, entry_mcap: mcapOf(state), exit_reason: null, exit_ready_ms: null, peak_net: 0 });
+    this.positions.set(mint, { mint, creator: this.launch.get(mint).creator, entry_t: t, sol_in: size, tokens, entry_mcap: mcapOf(state), exit_reason: null, exit_ready_ms: null, peak_net: 0,
+      entry_tx_left: this.s.tx_cost_sol, orig_sol_in: size, orig_tokens: tokens, realized_proceeds: 0, realized_pnl: 0, rungs_requested: 0, rungs_done: 0, partial_ready_ms: null, partial_frac: 0 });
     this._note(t, "entry", mint, `bought ${size.toFixed(3)} SOL at ${mcapOf(state).toFixed(1)} SOL mcap`);
   }
 
@@ -290,28 +292,42 @@ class PaperEngine {
     let reason = null;
     if (s.exit_on_creator_sell && tr.trader === pos.creator && tr.side === "sell") reason = "creator_sold";
     else if (isGraduated(state)) reason = "graduated";
-    else reason = this._exitReason(pos, state, tr.t);
+    else {
+      reason = this._exitReason(pos, state, tr.t);
+      if (reason === null) this._maybeLadder(pos, state, tr.t);
+    }
     if (reason) { pos.exit_reason = reason; pos.exit_ready_ms = tr.t + s.latency_ms; }
   }
 
   _exitReason(pos, state, now) {
     const s = this.s;
-    const net = quoteSell(state, pos.tokens, s.fee_bps) - 2 * s.tx_cost_sol;
+    const net = quoteSell(state, pos.tokens, s.fee_bps) - s.tx_cost_sol - pos.entry_tx_left;
     pos.peak_net = Math.max(pos.peak_net, net);
     const ret = (net / pos.sol_in - 1) * 100;
+    const breakeven = s.ladder.length > 0 && s.ladder_breakeven_stop && pos.rungs_done > 0;
+    const stop = breakeven ? 0.0 : s.stop_loss_pct, stopReason = breakeven ? "breakeven_stop" : "stop_loss";
     if (s.exit_mode === "targets") {
-      if (ret >= s.take_profit_pct) return "take_profit";
+      if (!s.ladder.length && ret >= s.take_profit_pct) return "take_profit";
       if (s.trailing_stop_pct > 0 && pos.peak_net > pos.sol_in && net <= pos.peak_net * (1 - s.trailing_stop_pct / 100)) return "trailing_stop";
-      if (ret <= -s.stop_loss_pct) return "stop_loss";
+      if (ret <= -stop) return stopReason;
       return null;
     }
-    if (ret <= -s.stop_loss_pct) return "stop_loss";
+    if (ret <= -stop) return stopReason;
     const tape = this.tapes.get(pos.mint);
     if (!tape) return null;
     const feats = pathFeatures(tape, now), peakRet = (pos.peak_net / pos.sol_in - 1) * 100;
     if (s.exit_mode === "model" && this.model_policy) return this.model_policy.decide(ret, peakRet, feats);
     const params = s.smart || Object.assign({}, SMART_DEFAULTS, { tp_floor: s.take_profit_pct, tp_cap: Math.max(150.0, 4 * s.take_profit_pct) });
     return smartDecide(params, ret, peakRet, feats);
+  }
+
+  _maybeLadder(pos, state, now) {
+    const s = this.s;
+    if (!s.ladder.length || pos.partial_ready_ms !== null || pos.exit_ready_ms !== null) return;
+    const gain = (quoteSell(state, pos.tokens, s.fee_bps) / pos.sol_in - 1) * 100;
+    let frac = 0;
+    while (pos.rungs_requested < s.ladder.length && gain >= s.ladder[pos.rungs_requested][0]) { frac += s.ladder[pos.rungs_requested][1] / 100; pos.rungs_requested += 1; }
+    if (frac > 0) { pos.partial_ready_ms = now + s.latency_ms; pos.partial_frac = frac; }
   }
 
   _reviewPositions(now) {
@@ -335,23 +351,43 @@ class PaperEngine {
     const due = [];
     for (const [m, r] of this.pending) if (r <= now) due.push([r, 0, m]);
     for (const [m, p] of this.positions) if (p.exit_ready_ms !== null && p.exit_ready_ms <= now) due.push([p.exit_ready_ms, 1, m]);
+    for (const [m, p] of this.positions) if (p.partial_ready_ms !== null && p.partial_ready_ms <= now) due.push([p.partial_ready_ms, 2, m]);
     due.sort((a, b) => a[0] - b[0] || a[1] - b[1] || cmpStr(a[2], b[2]));
     for (const [ready, kind, mint] of due) {
       if (kind === 0) { this.pending.delete(mint); this._open(mint, ready); }
-      else { const pos = this.positions.get(mint); this._close(pos, ready, pos.exit_reason); }
+      else if (kind === 1) { const pos = this.positions.get(mint); this._close(pos, ready, pos.exit_reason); }
+      else if (this.positions.has(mint) && this.positions.get(mint).exit_ready_ms === null) this._partialSell(this.positions.get(mint), ready);
     }
+  }
+
+  _partialSell(pos, t) {
+    const state = this.curve.get(pos.mint), tc = this.s.tx_cost_sol;
+    const sell = Math.min(pos.orig_tokens * pos.partial_frac, pos.tokens);
+    pos.partial_ready_ms = null; pos.partial_frac = 0;
+    if (sell >= pos.tokens * (1 - 1e-12)) {
+      pos.exit_reason = pos.exit_reason || `ladder_${pos.rungs_requested}`;
+      return this._close(pos, t, pos.exit_reason);
+    }
+    const share = sell / pos.tokens, proceeds = quoteSell(state, sell, this.s.fee_bps);
+    const basis = pos.sol_in * share, entryTx = pos.entry_tx_left * share, pnl = proceeds - basis - tc - entryTx;
+    this.cash += proceeds - tc;
+    pos.tokens -= sell; pos.sol_in -= basis; pos.entry_tx_left -= entryTx;
+    pos.peak_net *= 1 - share;
+    pos.realized_proceeds += proceeds; pos.realized_pnl += pnl; pos.rungs_done += 1;
+    this._note(t, "partial", pos.mint, `sold ${(sell / pos.orig_tokens * 100).toFixed(0)}% of the position (ladder rung ${pos.rungs_done}) for ${proceeds.toFixed(4)} SOL`);
   }
 
   _close(pos, t, reason) {
     const state = this.curve.get(pos.mint), tc = this.s.tx_cost_sol;
     const proceeds = quoteSell(state, pos.tokens, this.s.fee_bps);
     this.cash += proceeds - tc;
-    const pnl = proceeds - pos.sol_in - 2 * tc;
+    const pnl = pos.realized_pnl + proceeds - pos.sol_in - tc - pos.entry_tx_left;
+    const totalProceeds = pos.realized_proceeds + proceeds;
     this.positions.delete(pos.mint);
-    this.closed.push({ mint: pos.mint, entry_t: pos.entry_t, exit_t: t, sol_in: pos.sol_in, proceeds, pnl_sol: pnl, ret_pct: pnl / pos.sol_in * 100, reason, entry_mcap: pos.entry_mcap, exit_mcap: mcapOf(state) });
+    this.closed.push({ mint: pos.mint, entry_t: pos.entry_t, exit_t: t, sol_in: pos.orig_sol_in, proceeds: totalProceeds, pnl_sol: pnl, ret_pct: pnl / pos.orig_sol_in * 100, reason, entry_mcap: pos.entry_mcap, exit_mcap: mcapOf(state) });
     let invested = 0; for (const p of this.positions.values()) invested += p.sol_in;
     this.equity_curve.push(this.cash + invested);
-    const r = pnl / pos.sol_in * 100;
+    const r = pnl / pos.orig_sol_in * 100;
     this._note(t, "exit", pos.mint, `sold (${reason}) ${(r >= 0 ? "+" : "") + r.toFixed(1)}% / ${(pnl >= 0 ? "+" : "") + pnl.toFixed(4)} SOL`);
   }
 }
@@ -374,6 +410,7 @@ function settingsDict(s) {
     verdicts: [...s.allowed_verdicts].sort(), fee_bps: s.fee_bps, tx_cost_sol: s.tx_cost_sol,
     exit_mode: s.exit_mode, entry_mode: s.entry_mode, confirm_gain_pct: s.confirm_gain_pct, confirm_min_flow_sol: s.confirm_min_flow_sol, confirm_window_s: s.confirm_window_s,
     min_trades: s.min_trades, max_token_age_s: s.max_token_age_s, max_entry_gain_pct: s.max_entry_gain_pct, max_creator_launches: s.max_creator_launches, block_collapsed_creators: s.block_collapsed_creators,
+    ladder: s.ladder.map(([g, f]) => ({ gain_pct: g, sell_pct: f })), ladder_breakeven_stop: s.ladder_breakeven_stop,
   };
 }
 
@@ -383,6 +420,21 @@ function num(data, key, label, lo, hi, current) {
   const v = data[key];
   if (typeof v !== "number" || !Number.isFinite(v) || !(lo <= v && v <= hi)) throw new Error(`${label} must be a number between ${lo} and ${hi}`);
   return v;
+}
+
+const MAX_RUNGS = 5;
+function parseLadder(rungs) {
+  if (!Array.isArray(rungs) || rungs.length > MAX_RUNGS) throw new Error(`Ladder must be a list of up to ${MAX_RUNGS} rungs`);
+  const out = []; let lastGain = 0, total = 0;
+  rungs.forEach((r, idx) => {
+    const i = idx + 1;
+    const ok = r !== null && typeof r === "object" && !Array.isArray(r) && Object.keys(r).sort().join() === "gain_pct,sell_pct" && Number.isFinite(r.gain_pct) && Number.isFinite(r.sell_pct) && typeof r.gain_pct === "number" && typeof r.sell_pct === "number";
+    if (!ok || !(1 <= r.gain_pct && r.gain_pct <= 1000) || !(1 <= r.sell_pct && r.sell_pct <= 100)) throw new Error(`Ladder rung ${i} needs a gain between 1 and 1000 and a sell share between 1 and 100`);
+    if (r.gain_pct <= lastGain) throw new Error("Ladder gains must go up from one rung to the next");
+    lastGain = r.gain_pct; total += r.sell_pct; out.push([r.gain_pct, r.sell_pct]);
+  });
+  if (total > 100 + 1e-9) throw new Error("Ladder sells more than 100% of the position");
+  return out;
 }
 
 function parseSettings(data, current, hasModel) {
@@ -396,7 +448,7 @@ function parseSettings(data, current, hasModel) {
   if (!Array.isArray(verdicts) || !verdicts.length || verdicts.some((v) => !ALLOWED_VERDICTS.includes(v)))
     throw new Error("verdicts must be a non-empty list drawn from ['PASS', 'CAUTION', 'AVOID']");
   const flags = {};
-  for (const [key, label] of [["exit_on_creator_sell", "Rug-pull protection"], ["auto_compound", "Auto-compound"], ["use_blacklist", "Wallet blacklist"], ["honeypot_detection", "Honeypot detection"], ["block_collapsed_creators", "Block collapsed creators"]]) {
+  for (const [key, label] of [["exit_on_creator_sell", "Rug-pull protection"], ["auto_compound", "Auto-compound"], ["use_blacklist", "Wallet blacklist"], ["honeypot_detection", "Honeypot detection"], ["block_collapsed_creators", "Block collapsed creators"], ["ladder_breakeven_stop", "Breakeven stop"]]) {
     flags[key] = has(data, key) ? data[key] : cur[key];
     if (typeof flags[key] !== "boolean") throw new Error(`${label} must be true or false`);
   }
@@ -407,6 +459,7 @@ function parseSettings(data, current, hasModel) {
   if (exitMode === "model" && !hasModel) throw new Error("No learned model is loaded, so the learned exit can't be used");
   const entryMode = has(data, "entry_mode") ? data.entry_mode : cur.entry_mode;
   if (!["snipe", "confirm"].includes(entryMode)) throw new Error("entry_mode must be one of ['snipe', 'confirm']");
+  const ladder = parseLadder(has(data, "ladder") ? data.ladder : cur.ladder);
   const wallets = has(data, "blacklist") ? data.blacklist : cur.blacklist;
   if (!Array.isArray(wallets) || wallets.length > MAX_BLACKLIST || wallets.some((w) => typeof w !== "string" || !WALLET_RE.test(w)))
     throw new Error(`Blacklist must be a list of up to ${MAX_BLACKLIST} valid wallet addresses`);
@@ -437,12 +490,16 @@ function parseSettings(data, current, hasModel) {
   out.max_entry_gain_pct = num(data, "max_entry_gain_pct", "Max gain already", 0, 100000, cur.max_entry_gain_pct);
   out.max_creator_launches = Math.trunc(num(data, "max_creator_launches", "Max creator launches", 0, 1000, cur.max_creator_launches));
   out.block_collapsed_creators = flags.block_collapsed_creators;
+  out.ladder = ladder; out.ladder_breakeven_stop = flags.ladder_breakeven_stop;
   return out;
 }
 
 const PRESETS = {
   steady: { label: "Steady", blurb: "Your 30% cash-out goal: small size, strict filters, tight stop", tag: "RECOMMENDED",
     settings: { amount_min: 0.05, amount_max: 0.1, take_profit: 30, stop_loss: 15, trailing_stop_pct: 0, slippage_pct: 8, max_open: 3, max_dev_buy_pct: 10, verdicts: ["PASS"], max_hold_s: 300, size_mode: "verdict" } },
+  ladder: { label: "Ladder", blurb: "Sell in steps (half at +30%, a quarter at +60%), trail the rest, stop at breakeven", tag: "",
+    settings: { amount_min: 0.05, amount_max: 0.1, take_profit: 30, stop_loss: 15, trailing_stop_pct: 12, slippage_pct: 8, max_open: 3, max_dev_buy_pct: 10, verdicts: ["PASS"], max_hold_s: 600, size_mode: "verdict",
+      ladder: [{ gain_pct: 30, sell_pct: 50 }, { gain_pct: 60, sell_pct: 25 }], ladder_breakeven_stop: true } },
   safe: { label: "Safe", blurb: "Small size, strict filters, low slippage", tag: "",
     settings: { amount_min: 0.05, amount_max: 0.3, take_profit: 35, stop_loss: 15, trailing_stop_pct: 0, slippage_pct: 5, max_open: 3, max_dev_buy_pct: 10, verdicts: ["PASS"], max_hold_s: 600, size_mode: "verdict" } },
   balanced: { label: "Balanced", blurb: "Good risk/reward for most runs", tag: "",
@@ -535,8 +592,9 @@ class TerminalState {
     const row = { mint, symbol: tok.symbol, name: tok.name, t: tok.t, liquidity_sol: curve ? Math.max(curve.v_sol - VIRTUAL_START_SOL, 0) : null, amount: null, pnl_sol: null, pnl_pct: null };
     const pos = e.positions.get(mint), closed = this.closed_by_mint.get(mint), scan = e.scans.get(mint);
     if (pos) {
-      const net = quoteSell(curve, pos.tokens, e.s.fee_bps) - 2 * e.s.tx_cost_sol - pos.sol_in;
-      Object.assign(row, { status: pos.exit_ready_ms !== null ? "exiting" : "holding", detail: pos.exit_reason || "", amount: pos.sol_in, pnl_sol: net, pnl_pct: net / pos.sol_in * 100 });
+      const total = pos.realized_pnl + quoteSell(curve, pos.tokens, e.s.fee_bps) - e.s.tx_cost_sol - pos.sol_in - pos.entry_tx_left;
+      const rung = pos.rungs_done ? `rung ${pos.rungs_done}/${e.s.ladder.length}` : "";
+      Object.assign(row, { status: pos.exit_ready_ms !== null ? "exiting" : "holding", detail: pos.exit_reason || rung, amount: pos.orig_sol_in, pnl_sol: total, pnl_pct: total / pos.orig_sol_in * 100 });
     } else if (closed) Object.assign(row, { status: "closed", detail: closed.reason, amount: closed.sol_in, pnl_sol: closed.pnl_sol, pnl_pct: closed.ret_pct });
     else if (e.pending.has(mint)) Object.assign(row, { status: "entering", detail: "" });
     else if (e.watch.has(mint)) Object.assign(row, { status: "confirming", detail: "" });

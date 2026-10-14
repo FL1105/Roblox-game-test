@@ -60,6 +60,11 @@ class Strategy:
     max_entry_gain_pct: float = 100_000.0  # skip tokens already this far above their launch price (don't chase)
     max_creator_launches: int = 1000     # skip creators with more than this many earlier launches in the last 24 h
     block_collapsed_creators: bool = False  # skip creators with an earlier token that rose 50%+ then gave back 70%+ of that gain
+    # Take-profit ladder: sell part of the ORIGINAL position at each gain. A gain is the position's value after the exchange
+    # fee, before fixed per-transaction costs; each sale then pays its own transaction cost. In "targets" mode a ladder
+    # replaces take_profit_pct, and what is left rides on the trailing stop / stop loss / max hold.
+    ladder: tuple[tuple[float, float], ...] = ()  # ((gain_pct, percent_of_original_position_to_sell), ...), gains ascending
+    ladder_breakeven_stop: bool = True  # after the first rung is sold, the stop on the remainder moves up to breakeven
 
 
 @dataclass
@@ -73,6 +78,15 @@ class Position:
     exit_reason: str | None = None
     exit_ready_ms: int | None = None
     peak_net: float = 0.0  # best net sale value seen while held (for the trailing stop)
+    entry_tx_left: float = 0.0  # entry transaction cost not yet charged to a sale
+    orig_sol_in: float = 0.0
+    orig_tokens: float = 0.0
+    realized_proceeds: float = 0.0  # from ladder sales so far
+    realized_pnl: float = 0.0
+    rungs_requested: int = 0
+    rungs_done: int = 0
+    partial_ready_ms: int | None = None
+    partial_frac: float = 0.0  # fraction of the ORIGINAL position the pending partial sale will sell
 
 
 @dataclass(frozen=True)
@@ -274,7 +288,8 @@ class PaperEngine:
                 return
         tokens = quote_buy(state, size, self.s.fee_bps)
         self.cash -= size + self.s.tx_cost_sol
-        self.positions[mint] = Position(mint, self.launch[mint].creator, t, size, tokens, state.mcap_sol)
+        self.positions[mint] = Position(mint, self.launch[mint].creator, t, size, tokens, state.mcap_sol,
+                                        entry_tx_left=self.s.tx_cost_sol, orig_sol_in=size, orig_tokens=tokens)
         self._note(t, "entry", mint, f"bought {size:.3f} SOL at {state.mcap_sol:.1f} SOL mcap")
 
     # ---- exits ----
@@ -300,25 +315,43 @@ class PaperEngine:
             reason = "graduated"
         else:
             reason = self._exit_reason(pos, state, tr.t)
+            if reason is None:
+                self._maybe_ladder(pos, state, tr.t)
         if reason:
             pos.exit_reason, pos.exit_ready_ms = reason, tr.t + self.s.latency_ms
+
+    def _maybe_ladder(self, pos: Position, state: CurveState, now: int) -> None:
+        """Request a partial sale when the position has reached its next rung(s). Rungs passed in one jump sell together."""
+        s = self.s
+        if not s.ladder or pos.partial_ready_ms is not None or pos.exit_ready_ms is not None:
+            return
+        gain = (quote_sell(state, pos.tokens, s.fee_bps) / pos.sol_in - 1) * 100
+        frac = 0.0
+        while pos.rungs_requested < len(s.ladder) and gain >= s.ladder[pos.rungs_requested][0]:
+            frac += s.ladder[pos.rungs_requested][1] / 100
+            pos.rungs_requested += 1
+        if frac > 0:
+            pos.partial_ready_ms, pos.partial_frac = now + s.latency_ms, frac
 
     def _exit_reason(self, pos: Position, state: CurveState, now: int) -> str | None:
         """Profit-taking and cutting decisions for a held position at time `now`. Always updates the position's peak."""
         s = self.s
-        net = quote_sell(state, pos.tokens, s.fee_bps) - 2 * s.tx_cost_sol
+        net = quote_sell(state, pos.tokens, s.fee_bps) - s.tx_cost_sol - pos.entry_tx_left  # what the rest is worth after its own costs
         pos.peak_net = max(pos.peak_net, net)
         ret = (net / pos.sol_in - 1) * 100
+        breakeven = bool(s.ladder) and s.ladder_breakeven_stop and pos.rungs_done > 0
+        stop = 0.0 if breakeven else s.stop_loss_pct
+        stop_reason = "breakeven_stop" if breakeven else "stop_loss"
         if s.exit_mode == "targets":
-            if ret >= s.take_profit_pct:
+            if not s.ladder and ret >= s.take_profit_pct:
                 return "take_profit"
             if s.trailing_stop_pct > 0 and pos.peak_net > pos.sol_in and net <= pos.peak_net * (1 - s.trailing_stop_pct / 100):
                 return "trailing_stop"
-            if ret <= -s.stop_loss_pct:
-                return "stop_loss"
+            if ret <= -stop:
+                return stop_reason
             return None
-        if ret <= -s.stop_loss_pct:
-            return "stop_loss"
+        if ret <= -stop:
+            return stop_reason
         tape = self.tapes.get(pos.mint)
         if tape is None:
             return None
@@ -348,25 +381,51 @@ class PaperEngine:
     def _fill_due(self, now: int) -> None:
         due = [(r, 0, m) for m, r in self.pending.items() if r <= now]
         due += [(p.exit_ready_ms, 1, m) for m, p in self.positions.items() if p.exit_ready_ms is not None and p.exit_ready_ms <= now]
+        due += [(p.partial_ready_ms, 2, m) for m, p in self.positions.items() if p.partial_ready_ms is not None and p.partial_ready_ms <= now]
         for ready, kind, mint in sorted(due):
             if kind == 0:
                 del self.pending[mint]
                 self._open(mint, ready)
-            else:
+            elif kind == 1:
                 pos = self.positions[mint]
                 self._close(pos, ready, pos.exit_reason)
+            elif mint in self.positions and self.positions[mint].exit_ready_ms is None:
+                self._partial_sell(self.positions[mint], ready)
+
+    def _partial_sell(self, pos: Position, t: int) -> None:
+        """Sell the ladder's share of the ORIGINAL position at the state of the moment. Pays one transaction cost."""
+        state, tc = self.curve[pos.mint], self.s.tx_cost_sol
+        sell = min(pos.orig_tokens * pos.partial_frac, pos.tokens)
+        pos.partial_ready_ms, pos.partial_frac = None, 0.0
+        if sell >= pos.tokens * (1 - 1e-12):
+            pos.exit_reason = pos.exit_reason or f"ladder_{pos.rungs_requested}"
+            return self._close(pos, t, pos.exit_reason)
+        share = sell / pos.tokens
+        proceeds = quote_sell(state, sell, self.s.fee_bps)
+        basis, entry_tx = pos.sol_in * share, pos.entry_tx_left * share
+        pnl = proceeds - basis - tc - entry_tx
+        self.cash += proceeds - tc
+        pos.tokens -= sell
+        pos.sol_in -= basis
+        pos.entry_tx_left -= entry_tx
+        pos.peak_net *= 1 - share  # the peak value belonged to the whole position
+        pos.realized_proceeds += proceeds
+        pos.realized_pnl += pnl
+        pos.rungs_done += 1
+        self._note(t, "partial", pos.mint, f"sold {sell / pos.orig_tokens * 100:.0f}% of the position (ladder rung {pos.rungs_done}) for {proceeds:.4f} SOL")
 
     def _close(self, pos: Position, t: int, reason: str) -> None:
         state = self.curve[pos.mint]
         proceeds = quote_sell(state, pos.tokens, self.s.fee_bps)
         self.cash += proceeds - self.s.tx_cost_sol
-        pnl = proceeds - pos.sol_in - 2 * self.s.tx_cost_sol
+        pnl = pos.realized_pnl + proceeds - pos.sol_in - self.s.tx_cost_sol - pos.entry_tx_left  # the whole position, every rung included
+        total_proceeds = pos.realized_proceeds + proceeds
         del self.positions[pos.mint]
         self.closed.append(
-            ClosedTrade(pos.mint, pos.entry_t, t, pos.sol_in, proceeds, pnl, pnl / pos.sol_in * 100, reason, pos.entry_mcap, state.mcap_sol)
+            ClosedTrade(pos.mint, pos.entry_t, t, pos.orig_sol_in, total_proceeds, pnl, pnl / pos.orig_sol_in * 100, reason, pos.entry_mcap, state.mcap_sol)
         )
         self.equity_curve.append(self.cash + sum(p.sol_in for p in self.positions.values()))
-        self._note(t, "exit", pos.mint, f"sold ({reason}) {pnl / pos.sol_in * 100:+.1f}% / {pnl:+.4f} SOL")
+        self._note(t, "exit", pos.mint, f"sold ({reason}) {pnl / pos.orig_sol_in * 100:+.1f}% / {pnl:+.4f} SOL")
 
 
 def replay(events: list[Event], strategy: Strategy, start_sol: float = 1.0) -> EngineResult:

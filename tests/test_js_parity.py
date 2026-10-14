@@ -77,6 +77,8 @@ def settings_cases():
         {"confirm_gain_pct": 0, "confirm_window_s": 5, "confirm_min_flow_sol": 100},
         {"min_trades": 3, "max_token_age_s": 30, "max_entry_gain_pct": 25, "max_creator_launches": 2, "block_collapsed_creators": True},
         {"min_trades": 0, "max_token_age_s": 5, "max_entry_gain_pct": 0, "max_creator_launches": 0},
+        {"ladder": []}, {"ladder": [{"gain_pct": 30, "sell_pct": 50}]}, {"ladder": [{"gain_pct": 30, "sell_pct": 50}, {"gain_pct": 60, "sell_pct": 25.5}], "ladder_breakeven_stop": False},
+        {"ladder": [{"gain_pct": 10, "sell_pct": 20}] * 1 + [{"gain_pct": 20, "sell_pct": 20}, {"gain_pct": 30, "sell_pct": 20}, {"gain_pct": 40, "sell_pct": 20}, {"gain_pct": 50, "sell_pct": 20}]},
     ]
     bad = [
         {"amount_min": 1, "amount_max": 0.5}, {"stop_loss": 100}, {"stop_loss": 0}, {"take_profit": True}, {"take_profit": "30"},
@@ -86,6 +88,10 @@ def settings_cases():
         {"min_liquidity_sol": -1}, {"blacklist": ["nope"]}, {"blacklist": "x"}, {"blacklist": [1]}, {"blacklist": [WALLET] * 201},
         {"amount_min": 0}, {"amount_max": 101}, {"fee_bps": 1001}, {"max_hold_s": 5}, {"max_entry_mcap_sol": 0.5},
         {"exit_mode": "model"}, {"exit_mode": "magic"}, {"entry_mode": "yolo"}, {"confirm_gain_pct": 501}, {"confirm_window_s": 4}, {"confirm_min_flow_sol": -1},
+        {"ladder": "x"}, {"ladder": [{"gain_pct": g, "sell_pct": 5} for g in range(10, 70, 10)]}, {"ladder": [{"gain_pct": 30}]}, {"ladder": [{"gain_pct": 30, "sell_pct": 50, "x": 1}]},
+        {"ladder": [{"gain_pct": "30", "sell_pct": 50}]}, {"ladder": [{"gain_pct": True, "sell_pct": 50}]}, {"ladder": [30]}, {"ladder": [{"gain_pct": 60, "sell_pct": 50}, {"gain_pct": 30, "sell_pct": 25}]},
+        {"ladder": [{"gain_pct": 30, "sell_pct": 50}, {"gain_pct": 30, "sell_pct": 25}]}, {"ladder": [{"gain_pct": 30, "sell_pct": 60}, {"gain_pct": 60, "sell_pct": 41}]}, {"ladder": [{"gain_pct": 0, "sell_pct": 50}]},
+        {"ladder": [{"gain_pct": 1001, "sell_pct": 50}]}, {"ladder": [{"gain_pct": 30, "sell_pct": 0}]}, {"ladder": [{"gain_pct": 30, "sell_pct": 101}]}, {"ladder_breakeven_stop": "no"},
         {"min_trades": -1}, {"min_trades": 1001}, {"max_token_age_s": 4}, {"max_entry_gain_pct": -1}, {"max_creator_launches": 1001}, {"block_collapsed_creators": "yes"},
     ]
     out = []
@@ -171,6 +177,32 @@ def handcrafted():
             ev.append(x.buy(t0 + dt, sol) if sol > 0 else x.sell(t0 + dt, -sol, "O"))
         return ev + [x.scan(t0 + scan_at), x.buy(t0 + scan_at + 5_000, 0.01)]
 
+    # ---- take-profit ladders ----
+    LAD = [{"gain_pct": 30, "sell_pct": 50}, {"gain_pct": 60, "sell_pct": 25}]
+
+    def lad(steps, mint="M1"):
+        x = sim(mint, "C", T0)
+        ev = [x.create(), x.scan(T0 + 100), x.buy(T0 + 200, 0.01)]
+        for dt, v in steps:
+            ev.append(x.buy(T0 + dt, v) if v > 0 else x.sell(T0 + dt, -v, "O"))
+        return ev
+
+    out.append(("ladder-two-rungs", {**quick, "ladder": LAD, "stop_loss": 20}, lad([(1_000, 5.0), (2_000, 0.01), (3_000, 5.0), (4_000, 0.01)])))
+    out.append(("ladder-one-jump", {**quick, "ladder": LAD}, lad([(1_000, 12.0), (2_000, 0.01), (3_000, 5.0)])))
+    out.append(("ladder-closes-position", {**quick, "ladder": [{"gain_pct": 30, "sell_pct": 50}, {"gain_pct": 60, "sell_pct": 50}]}, lad([(1_000, 5.0), (2_000, 0.01), (3_000, 5.0), (4_000, 0.01)])))
+    out.append(("ladder-breakeven-stop", {**quick, "ladder": LAD}, lad([(1_000, 5.0), (2_000, 0.01), (3_000, -2.4e8), (4_000, 0.01)])))
+    out.append(("ladder-no-breakeven", {**quick, "ladder": LAD, "ladder_breakeven_stop": False, "stop_loss": 90}, lad([(1_000, 5.0), (2_000, 0.01), (3_000, -2.4e8), (4_000, 0.01)])))
+    out.append(("ladder-trailing-remainder", {**quick, "ladder": LAD, "trailing_stop_pct": 10}, lad([(1_000, 5.0), (2_000, 0.01), (3_000, 8.0), (4_000, 0.01), (5_000, -9.0e7), (6_000, 0.01)])))
+    out.append(("ladder-with-costs-and-delay", {"ladder": LAD, "latency_ms": 500, "tx_cost_sol": 0.003, "ladder_breakeven_stop": False, "stop_loss": 90}, lad([(1_000, 5.0), (2_000, 0.01), (3_000, 5.0), (4_000, 0.01), (6_000, 0.01)])))
+    out.append(("ladder-smart-exit", {**quick, "ladder": LAD, "exit_mode": "smart"}, lad([(1_000, 5.0), (2_000, 0.01), (20_000, -3.0e7), (21_000, 0.01)])))
+    out.append(("ladder-stop-before-any-rung", {**quick, "ladder": LAD}, [(lambda x: [x.create(), x.scan(T0 + 100), x.buy(T0 + 200, 0.01), x.buy(T0 + 1_000, 2.0), x.sell(T0 + 3_000, 2.2e8, "O"), x.buy(T0 + 4_000, 0.01)])(sim())][0]))
+    # a rung is requested, then the price moves before the sale fills (500 ms delay)
+    for tag, crash in (("small", -9.0e7), ("medium", -1.6e8), ("big", -4.0e8)):
+        x = sim()
+        out.append((f"ladder-price-falls-before-fill-{tag}", {"ladder": LAD, "latency_ms": 500, "tx_cost_sol": 0.0, "stop_loss": 20},
+                    [x.create(), x.buy(T0 + 10, 10.0), x.scan(T0 + 100), x.buy(T0 + 700, 0.01), x.buy(T0 + 1_000, 10.0), x.sell(T0 + 1_200, -crash, "O"), x.buy(T0 + 1_600, 0.01), x.buy(T0 + 3_000, 0.01)]))
+    out.append(("market-ladder", {"ladder": LAD, "trailing_stop_pct": 12, "latency_ms": 300, "tx_cost_sol": 0.002}, None))
+    out.append(("market-ladder-smart-confirm", {"ladder": [{"gain_pct": 20, "sell_pct": 30}, {"gain_pct": 50, "sell_pct": 30}], "exit_mode": "smart", "entry_mode": "confirm", "confirm_gain_pct": 5}, None))
     out.append(("filter-min-trades", {**quick, "min_trades": 2}, tok("A", "C1", T0) + tok("B", "C2", T0 + 100_000, [(10, 0.2), (20, 0.2)])))
     out.append(("filter-min-trades-boundary", {**quick, "min_trades": 2}, tok("A", "C1", T0, [(10, 0.2)]) + tok("B", "C2", T0 + 100_000, [(10, 0.2), (20, 0.2)])))
     out.append(("filter-serial-24h-window", {**quick, "max_creator_launches": 0}, tok("OLD", "C1", T0) + tok("NEW", "C1", T0 + 2 * 86_400_000) + tok("NEWER", "C1", T0 + 2 * 86_400_000 + 60_000)))
@@ -257,9 +289,11 @@ class JsParity(unittest.TestCase):
         self.assertGreater(trades, 150)
         self.assertGreaterEqual(reasons, {"take_profit", "stop_loss", "timeout", "trailing_stop", "creator_sold", "graduated"})
         self.assertGreaterEqual(reasons, {"profit_stall", "smart_trail", "stalled", "model_sell"}, reasons)
+        self.assertGreaterEqual(reasons, {"breakeven_stop", "ladder_2"}, reasons)
+        self.assertTrue(any(l["kind"] == "partial" for r in runs for l in r["snapshots"]["all"]["logs"]), "no ladder sale was ever compared")
         self.assertGreaterEqual(skips, {"max_open", "slippage", "low_liquidity", "blacklisted", "no_cash", "verdict", "no_confirmation"})
         self.assertGreaterEqual(skips, {"too_few_trades", "too_old", "chasing", "serial_creator", "collapsed_creator"}, skips)
-        quiet_by_design = ("slippage-abort", "low-liquidity", "rugger-then-relaunch", "creator-sells-60-percent", "confirm-watch-expires", "confirm-needs-current-flow", "filters-with-confirm", "filter-min-trades", "filter-min-trades-boundary", "filter-serial-later-launch-ignored", "filter-token-age", "filter-no-chasing", "filter-collapsed-creator")
+        quiet_by_design = ("slippage-abort", "low-liquidity", "rugger-then-relaunch", "creator-sells-60-percent", "confirm-watch-expires", "confirm-needs-current-flow", "filters-with-confirm", "filter-min-trades", "filter-min-trades-boundary", "filter-serial-later-launch-ignored", "filter-token-age", "filter-no-chasing", "filter-collapsed-creator", "ladder-stop-before-any-rung", "ladder-price-falls-before-fill-small", "ladder-price-falls-before-fill-medium", "ladder-price-falls-before-fill-big")
         silent = [r["name"] for r in runs if r["snapshots"]["all"]["stats"]["trades"] + r["snapshots"]["all"]["paper"]["open"] == 0 and r["name"] not in quiet_by_design]
         self.assertEqual(silent, [], "scenarios that never traded prove nothing")
 

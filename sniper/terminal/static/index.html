@@ -144,6 +144,7 @@ select.inp{width:auto;padding:7px 10px;font-size:13px}
 .field .t.row{margin-bottom:0}
 .field select.inp,.field input.inp,.field textarea.inp{width:100%}
 textarea.inp{min-height:70px;resize:vertical;font-size:12px}
+.ladder{display:flex;flex-direction:column;gap:8px}.lrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;color:var(--muted)}.lrow .inp{width:84px}
 .sw{position:relative;width:46px;height:26px;flex:none}
 .sw input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
 .sw i{position:absolute;inset:0;border-radius:99px;background:#1b2a32;transition:.15s;pointer-events:none}
@@ -376,6 +377,8 @@ const TABS = {
     {k: "min_liquidity_sol", t: "num", l: "Min Liquidity (SOL)", h: "SOL actually raised on the curve. Brand-new tokens have about 0, so a high floor skips nearly every fresh launch."},
     {k: "max_open", t: "num", l: "Max Concurrent Positions", h: "How many open trades the bot holds at once."},
     {k: "trailing_stop_pct", t: "num", l: "Trailing Stop (%)", h: "Once in profit, sell after this % drop from the best price. 0 = off."},
+    {k: "ladder", t: "ladder", l: "Take-Profit Ladder", h: "Sell part of the position at each gain; leave a row empty to skip it. While a ladder is in use it replaces the single Take Profit, and what's left rides the trailing stop. Every sale pays its own transaction cost."},
+    {k: "ladder_breakeven_stop", t: "tog", l: "Breakeven stop after the first rung", h: "Once the first rung has sold, the rest is sold if it falls back to what you paid."},
     {k: "size_mode", t: "sel", opts: MODES, l: "Position Size Mode", h: "How the bot picks a size between the minimum and maximum."},
     {k: "auto_compound", t: "tog", l: "Auto-compound", h: "Scale position sizes with your paper bankroll: grow after wins, shrink after losses."},
     {k: "min_trades", t: "num", l: "Min Trades Seen", h: "Skip tokens nobody has traded yet: at least this many price moves since launch. 0 = off."},
@@ -408,7 +411,7 @@ const TABS = {
 const ctl = {};  // key -> {get(): value, set(value)}
 
 function fieldEl(f) {
-  const box = el("div", "field" + (f.t === "wallets" || f.t === "note" ? " wide" : ""));
+  const box = el("div", "field" + (f.t === "wallets" || f.t === "note" || f.t === "ladder" ? " wide" : ""));
   if (f.t === "note") {
     box.className = "info wide"; box.style.gridColumn = "1/-1";
     const b = el("b", "", "Left out on purpose: "); box.append(b, document.createTextNode("\"AI market analysis\", \"Smart entry/exit\" and an \"AI agent\" appear on the site you based this on, but none of them says what it actually does, so there is nothing to test. Every control here maps to a rule the simulator really applies. If you want a learned model later, the honest way is to train it on the recorded launches and let the sweep check it on data it hasn't seen."));
@@ -431,6 +434,18 @@ function fieldEl(f) {
         if (![...sel.options].some(o => o.value === String(v))) { const o = el("option", "", "Custom: " + (Array.isArray(v) ? v.join(", ") : v)); o.value = "custom"; o.dataset.custom = "1"; sel.append(o); sel.value = "custom"; }
         else sel.value = String(v);
       }
+    };
+  } else if (f.t === "ladder") {
+    const rows = [0, 1, 2].map(() => [document.createElement("input"), document.createElement("input")]);
+    const holder = el("div", "ladder");
+    rows.forEach(([g, sell], i) => {
+      g.className = sell.className = "inp"; g.inputMode = sell.inputMode = "decimal"; g.setAttribute("aria-label", `Ladder rung ${i + 1} gain (%)`); sell.setAttribute("aria-label", `Ladder rung ${i + 1} share to sell (%)`);
+      const row = el("div", "lrow"); row.append(el("span", "", `Rung ${i + 1}: at +`), g, el("span", "", "% gain, sell"), sell, el("span", "", "% of the position")); holder.append(row);
+    });
+    box.append(holder);
+    ctl[f.k] = {
+      get: () => rows.filter(([g, sell]) => g.value.trim() !== "" || sell.value.trim() !== "").map(([g, sell]) => ({gain_pct: g.value.trim() === "" ? null : Number(g.value), sell_pct: sell.value.trim() === "" ? null : Number(sell.value)})),
+      set: (v) => rows.forEach(([g, sell], i) => { g.value = v && v[i] ? v[i].gain_pct : ""; sell.value = v && v[i] ? v[i].sell_pct : ""; }),
     };
   } else if (f.t === "wallets") {
     const ta = document.createElement("textarea"); ta.className = "inp"; ta.setAttribute("aria-label", f.l); ta.spellcheck = false; ta.placeholder = "creator wallet address";
@@ -525,15 +540,15 @@ function sparkline(host, ys, start) {
 }
 
 /* ---- rows ---- */
-const CLOSED = {profit_stall: ["PROFIT (STALLED)", "g"], smart_trail: ["SMART TRAIL", "g"], stalled: ["STALLED OUT", "a"], sell_pressure: ["SELL PRESSURE", "a"], model_sell: ["MODEL SELL", "a"], trailing_stop: ["TRAILING STOP", "g"], take_profit: ["TAKE PROFIT", "g"], stop_loss: ["STOP LOSS", "r"], creator_sold: ["CREATOR SOLD", "r"], timeout: ["TIMED OUT", "a"], graduated: ["GRADUATED", "g"], end_of_data: ["CLOSED", ""]};
+const CLOSED = {breakeven_stop: ["BREAKEVEN STOP", "a"], profit_stall: ["PROFIT (STALLED)", "g"], smart_trail: ["SMART TRAIL", "g"], stalled: ["STALLED OUT", "a"], sell_pressure: ["SELL PRESSURE", "a"], model_sell: ["MODEL SELL", "a"], trailing_stop: ["TRAILING STOP", "g"], take_profit: ["TAKE PROFIT", "g"], stop_loss: ["STOP LOSS", "r"], creator_sold: ["CREATOR SOLD", "r"], timeout: ["TIMED OUT", "a"], graduated: ["GRADUATED", "g"], end_of_data: ["CLOSED", ""]};
 const SKIPS = {serial_creator: "SERIAL CREATOR", collapsed_creator: "CREATOR COLLAPSED", too_old: "TOO OLD", too_few_trades: "NO TRADES YET", chasing: "ALREADY UP", no_confirmation: "NO CONFIRMATION", slippage: "SLIPPAGE", low_liquidity: "LOW LIQUIDITY", blacklisted: "BLACKLISTED", bot_stopped: "BOT STOPPED", dev_buy: "DEV BUY", max_open: "MAX OPEN", mcap_too_high: "TOO LATE", mcap_too_high_at_fill: "TOO LATE", no_cash: "NO CASH"};
 function statusChip(r) {
   switch (r.status) {
-    case "holding": return ["HOLDING", "g"];
+    case "holding": return ["HOLDING" + (r.detail ? " · " + r.detail.toUpperCase() : ""), "g"];
     case "exiting": return ["EXITING", "a"];
     case "entering": return ["ENTERING", "a"];
     case "confirming": return ["CONFIRMING", "a"];
-    case "closed": return CLOSED[r.detail] || ["CLOSED", ""];
+    case "closed": return CLOSED[r.detail] || (r.detail.startsWith("ladder_") ? ["LADDER COMPLETE", "g"] : ["CLOSED", ""]);
     case "skipped": return ["SKIPPED · " + (r.detail.startsWith("verdict:") ? r.detail.slice(8) : SKIPS[r.detail] || r.detail.toUpperCase()), ""];
     case "watching": return ["WATCHING · " + r.detail, ""];
     default: return ["SCANNING", ""];

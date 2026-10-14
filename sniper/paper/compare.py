@@ -30,6 +30,7 @@ def variants(base: Strategy, have_model: bool) -> dict[str, Strategy]:
         "snipe + smart exit": replace(base, exit_mode="smart"),
         "confirm + fixed targets": replace(base, entry_mode="confirm"),
         "confirm + smart exit": replace(base, entry_mode="confirm", exit_mode="smart"),
+        "snipe + ladder (30%: half, 60%: quarter, trail 12%)": replace(base, ladder=((30.0, 50.0), (60.0, 25.0)), trailing_stop_pct=12.0),
     }
     if have_model:
         out["confirm + learned model"] = replace(base, entry_mode="confirm", exit_mode="model")

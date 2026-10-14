@@ -55,6 +55,8 @@ def settings_dict(s: Strategy) -> dict:
         "max_entry_gain_pct": s.max_entry_gain_pct,
         "max_creator_launches": s.max_creator_launches,
         "block_collapsed_creators": s.block_collapsed_creators,
+        "ladder": [{"gain_pct": g, "sell_pct": f} for g, f in s.ladder],
+        "ladder_breakeven_stop": s.ladder_breakeven_stop,
     }
 
 
@@ -72,6 +74,27 @@ def _num(data: dict, key: str, label: str, lo: float, hi: float, current: float)
     if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not lo <= v <= hi:
         raise ValueError(f"{label} must be a number between {lo:g} and {hi:g}")
     return float(v)
+
+
+MAX_RUNGS = 5
+
+
+def _parse_ladder(rungs) -> tuple[tuple[float, float], ...]:
+    """A take-profit ladder: [{"gain_pct": 30, "sell_pct": 50}, ...]. Empty means no ladder."""
+    if not isinstance(rungs, list) or len(rungs) > MAX_RUNGS:
+        raise ValueError(f"Ladder must be a list of up to {MAX_RUNGS} rungs")
+    out, last_gain, total = [], 0.0, 0.0
+    for i, r in enumerate(rungs, 1):
+        ok = isinstance(r, dict) and set(r) == {"gain_pct", "sell_pct"} and all(isinstance(r[k], (int, float)) and not isinstance(r[k], bool) and math.isfinite(r[k]) for k in r)
+        if not ok or not 1 <= r["gain_pct"] <= 1000 or not 1 <= r["sell_pct"] <= 100:
+            raise ValueError(f"Ladder rung {i} needs a gain between 1 and 1000 and a sell share between 1 and 100")
+        if r["gain_pct"] <= last_gain:
+            raise ValueError("Ladder gains must go up from one rung to the next")
+        last_gain, total = r["gain_pct"], total + r["sell_pct"]
+        out.append((float(r["gain_pct"]), float(r["sell_pct"])))
+    if total > 100 + 1e-9:
+        raise ValueError("Ladder sells more than 100% of the position")
+    return tuple(out)
 
 
 def parse_settings(data: dict, current: Strategy, has_model: bool = False) -> Strategy:
@@ -92,7 +115,7 @@ def parse_settings(data: dict, current: Strategy, has_model: bool = False) -> St
     flags = {}
     for key, label in (("exit_on_creator_sell", "Rug-pull protection"), ("auto_compound", "Auto-compound"),
                        ("use_blacklist", "Wallet blacklist"), ("honeypot_detection", "Honeypot detection"),
-                       ("block_collapsed_creators", "Block collapsed creators")):
+                       ("block_collapsed_creators", "Block collapsed creators"), ("ladder_breakeven_stop", "Breakeven stop")):
         flags[key] = data.get(key, cur[key])
         if not isinstance(flags[key], bool):
             raise ValueError(f"{label} must be true or false")
@@ -107,6 +130,7 @@ def parse_settings(data: dict, current: Strategy, has_model: bool = False) -> St
     entry_mode = data.get("entry_mode", cur["entry_mode"])
     if entry_mode not in ENTRY_MODES:
         raise ValueError(f"entry_mode must be one of {list(ENTRY_MODES)}")
+    ladder = _parse_ladder(data.get("ladder", cur["ladder"]))
     wallets = data.get("blacklist", cur["blacklist"])
     if not isinstance(wallets, list) or len(wallets) > MAX_BLACKLIST or any(not isinstance(w, str) or not WALLET_RE.match(w) for w in wallets):
         raise ValueError(f"Blacklist must be a list of up to {MAX_BLACKLIST} valid wallet addresses")
@@ -144,6 +168,8 @@ def parse_settings(data: dict, current: Strategy, has_model: bool = False) -> St
         max_entry_gain_pct=_num(data, "max_entry_gain_pct", "Max gain already", 0, 100000, cur["max_entry_gain_pct"]),
         max_creator_launches=int(_num(data, "max_creator_launches", "Max creator launches", 0, 1000, cur["max_creator_launches"])),
         block_collapsed_creators=flags["block_collapsed_creators"],
+        ladder=ladder,
+        ladder_breakeven_stop=flags["ladder_breakeven_stop"],
     )
 
 
@@ -152,6 +178,10 @@ PRESETS = {
     "steady": {"label": "Steady", "blurb": "Your 30% cash-out goal: small size, strict filters, tight stop", "tag": "RECOMMENDED",
                "settings": {"amount_min": 0.05, "amount_max": 0.1, "take_profit": 30, "stop_loss": 15, "trailing_stop_pct": 0, "slippage_pct": 8,
                             "max_open": 3, "max_dev_buy_pct": 10, "verdicts": ["PASS"], "max_hold_s": 300, "size_mode": "verdict"}},
+    "ladder": {"label": "Ladder", "blurb": "Sell in steps (half at +30%, a quarter at +60%), trail the rest, stop at breakeven", "tag": "",
+               "settings": {"amount_min": 0.05, "amount_max": 0.1, "take_profit": 30, "stop_loss": 15, "trailing_stop_pct": 12, "slippage_pct": 8,
+                            "max_open": 3, "max_dev_buy_pct": 10, "verdicts": ["PASS"], "max_hold_s": 600, "size_mode": "verdict",
+                            "ladder": [{"gain_pct": 30, "sell_pct": 50}, {"gain_pct": 60, "sell_pct": 25}], "ladder_breakeven_stop": True}},
     "safe": {"label": "Safe", "blurb": "Small size, strict filters, low slippage", "tag": "",
              "settings": {"amount_min": 0.05, "amount_max": 0.3, "take_profit": 35, "stop_loss": 15, "trailing_stop_pct": 0, "slippage_pct": 5,
                           "max_open": 3, "max_dev_buy_pct": 10, "verdicts": ["PASS"], "max_hold_s": 600, "size_mode": "verdict"}},
@@ -292,9 +322,10 @@ class TerminalState:
         pos, closed = e.positions.get(mint), self.closed_by_mint.get(mint)
         scan = e.scans.get(mint)
         if pos is not None:
-            net = quote_sell(curve, pos.tokens, e.s.fee_bps) - 2 * e.s.tx_cost_sol - pos.sol_in
-            row.update(status="exiting" if pos.exit_ready_ms is not None else "holding", detail=pos.exit_reason or "",
-                       amount=pos.sol_in, pnl_sol=net, pnl_pct=net / pos.sol_in * 100)
+            total = pos.realized_pnl + quote_sell(curve, pos.tokens, e.s.fee_bps) - e.s.tx_cost_sol - pos.sol_in - pos.entry_tx_left
+            rung = f"rung {pos.rungs_done}/{len(e.s.ladder)}" if pos.rungs_done else ""
+            row.update(status="exiting" if pos.exit_ready_ms is not None else "holding", detail=pos.exit_reason or rung,
+                       amount=pos.orig_sol_in, pnl_sol=total, pnl_pct=total / pos.orig_sol_in * 100)
         elif closed is not None:
             row.update(status="closed", detail=closed.reason, amount=closed.sol_in, pnl_sol=closed.pnl_sol, pnl_pct=closed.ret_pct)
         elif mint in e.pending:

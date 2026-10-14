@@ -313,8 +313,6 @@ class EngineHooks(unittest.TestCase):
         self.assertAlmostEqual(eng.closed[0].sol_in, 0.2)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class ConfigOptions(unittest.TestCase):
@@ -418,3 +416,56 @@ class ConfigServer(unittest.TestCase):
         code, _ = self.post("/api/settings", {"take_profit": 55, "slippage_pct": 999})
         self.assertEqual(code, 400)
         self.assertEqual(settings_dict(self.state.strategy), before)  # nothing half-applied
+
+
+class LadderSettingsAndDisplay(unittest.TestCase):
+    RUNGS = [{"gain_pct": 30, "sell_pct": 50}, {"gain_pct": 60, "sell_pct": 25}]
+
+    def test_round_trip_and_defaults(self):
+        s = parse_settings({"ladder": self.RUNGS, "ladder_breakeven_stop": False}, default_strategy())
+        self.assertEqual(s.ladder, ((30.0, 50.0), (60.0, 25.0)))
+        self.assertEqual(parse_settings(settings_dict(s), s), s)
+        self.assertEqual(settings_dict(default_strategy())["ladder"], [])  # off unless asked for
+        self.assertTrue(settings_dict(default_strategy())["ladder_breakeven_stop"])
+
+    def test_rejects_malformed_ladders(self):
+        s = default_strategy()
+        bad = [
+            "x", [30], [{"gain_pct": 30}], [{"gain_pct": 30, "sell_pct": 50, "extra": 1}], [{"gain_pct": "30", "sell_pct": 50}],
+            [{"gain_pct": True, "sell_pct": 50}], [{"gain_pct": 0, "sell_pct": 50}], [{"gain_pct": 1001, "sell_pct": 50}],
+            [{"gain_pct": 30, "sell_pct": 0}], [{"gain_pct": 30, "sell_pct": 101}],
+            [{"gain_pct": 60, "sell_pct": 50}, {"gain_pct": 30, "sell_pct": 25}], [{"gain_pct": 30, "sell_pct": 50}, {"gain_pct": 30, "sell_pct": 25}],
+            [{"gain_pct": 30, "sell_pct": 60}, {"gain_pct": 60, "sell_pct": 41}], [{"gain_pct": g, "sell_pct": 5} for g in range(10, 70, 10)],
+        ]
+        for ladder in bad:
+            with self.assertRaises(ValueError, msg=str(ladder)):
+                parse_settings({"ladder": ladder}, s)
+
+    def test_error_messages_are_specific_enough_to_act_on(self):
+        s = default_strategy()
+        for ladder, text in (([{"gain_pct": 60, "sell_pct": 50}, {"gain_pct": 30, "sell_pct": 25}], "go up"), ([{"gain_pct": 30, "sell_pct": 70}, {"gain_pct": 60, "sell_pct": 40}], "more than 100%"), ([{"gain_pct": 0, "sell_pct": 5}], "rung 1")):
+            with self.assertRaisesRegex(ValueError, text):
+                parse_settings({"ladder": ladder}, s)
+
+    def test_table_shows_rung_progress_and_realised_profit_then_the_books_balance(self):
+        st = TerminalState(replace(FAST, max_hold_s=3600), start_sol=1.0)
+        st.update_settings({"ladder": self.RUNGS, "stop_loss": 40, "take_profit": 30})
+        st.set_running(True)
+        x = Sim("M1", "C", 1_000_000)
+        for ev in [x.create(), x.scan(1_000_100), x.buy(1_000_200, 0.01), x.buy(1_001_000, 5.0), x.buy(1_002_000, 0.01)]:
+            st.emit(ev)
+        row = st.snapshot()["rows"][0]
+        self.assertEqual((row["status"], row["detail"]), ("holding", "rung 1/2"))
+        self.assertAlmostEqual(row["amount"], 0.1)                       # still shown against what was originally paid
+        self.assertGreater(row["pnl_sol"], 0)
+        self.assertTrue(any("ladder rung 1" in l["text"] for l in st.snapshot()["logs"]))
+        for ev in [x.buy(1_003_000, 5.0), x.buy(1_004_000, 0.01)]:
+            st.emit(ev)
+        st.engine.finish()
+        snap = st.snapshot("all")
+        self.assertAlmostEqual(snap["paper"]["equity"], 1.0 + snap["stats"]["pnl_sol"], places=9)
+        self.assertEqual(snap["stats"]["trades"], 1)  # one position, however many rungs it sold in
+
+
+if __name__ == "__main__":
+    unittest.main()
