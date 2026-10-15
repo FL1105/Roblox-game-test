@@ -24,6 +24,7 @@ Status key: DONE / NOW / NEXT / NEEDS YOU / ONLY IF EARNED
 - Limits: the recorder cannot see who traded and sees tokens ~13 s after launch, so this says nothing about faster entries or wallet-following.
 
 ## Next
+11b. READY  Trade-stream recorder (`python -m sniper.live --stream`): every launch AND every trade with its wallet from second zero, no Jupiter delay. PumpPortal serves this feed only to an API key funded with at least 0.02 SOL (checked live: it answers "only available when connecting with an API key funded with at least 0.02 SOL"). Needs you: create that key with a throwaway wallet, keep the balance tiny, store it as the environment secret PUMPPORTAL_API_KEY (never in chat). The recorder only reads; it has no code that can send a transaction.
 12. NEXT  More data (days, not 100 minutes) on a small hosted server: the only way to tell a thin edge from noise
 13. NEEDS YOU  Allow api.mainnet-beta.solana.com: shows WHO trades (creator-sell exits, wallet reputation) and real launch-time speed. This is where an edge could still exist
 14. NEXT  Re-test any promising idea on fresh, never-seen data (the real proof)

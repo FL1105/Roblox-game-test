@@ -155,6 +155,7 @@ async def run(out_path: str, minutes: float, rps: float = 12.0, observe_s: float
     """Record launches until `minutes` are up. A dropped or refused connection never ends the run: it is retried with backoff, and the
     outage is written to the file as a `gap` row (and a `resume` row when the feed returns) so later analysis knows launches were missed."""
     import websockets
+    from websockets.exceptions import WebSocketException
 
     loop = asyncio.get_running_loop()
     loop.set_default_executor(ThreadPoolExecutor(24))
@@ -184,7 +185,7 @@ async def run(out_path: str, minutes: float, rps: float = 12.0, observe_s: float
                         if clock() - last_print > 60:
                             last_print = clock()
                             print(time.strftime("%H:%M:%S"), col.summary(), flush=True)
-            except (OSError, asyncio.TimeoutError, websockets.exceptions.WebSocketException) as e:  # includes a handshake the server refuses (HTTP 502)
+            except (OSError, asyncio.TimeoutError, WebSocketException) as e:  # includes a handshake the server refuses (HTTP 502)
                 if not in_gap:
                     rec.write({"k": "gap", "t": col.now_ms(), "why": repr(e)[:120]})
                     in_gap = True

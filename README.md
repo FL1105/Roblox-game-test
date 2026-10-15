@@ -66,6 +66,13 @@ recording again in marked repeat laps.
 Browser click test: `python -m sniper.terminal --no-browser &`, then `npm i playwright-core` and
 `node e2e/terminal_click_test.js` (see the file header; it changes that instance's settings).
 
+### Recording trades with wallets (needs a key)
+`PUMPPORTAL_API_KEY=... python -m sniper.live --stream --out data/raw_stream.jsonl --minutes 240` records every launch and every trade (wallet, side, size,
+curve state after it) from the first second, using PumpPortal's data stream, which only serves a key funded with at least 0.02 SOL. The key is used to read:
+the program sends subscribe/unsubscribe messages only and contains no code that can send a transaction. The key is read from the environment and scrubbed from
+every log line and file. Outages are retried and marked as `gap`/`resume` rows. Stream recordings convert to the same events as the price-only ones, plus the
+real trader of each trade (so "creator sold" exits work).
+
 ## Real data and the decision system
 
 ```

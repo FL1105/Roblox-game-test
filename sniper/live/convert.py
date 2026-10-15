@@ -82,6 +82,9 @@ def to_events(rows: list[dict], fee: float = FEE) -> list[Event]:
             nt = NewToken(r["t"], mint, r.get("creator") or "", r.get("name", ""), r.get("symbol", ""), r["dev_tokens"], r["dev_sol"], r["v_sol"], r["v_tokens"])
             launches[mint], last[mint] = nt, (r["v_sol"], r["v_tokens"])
             events.append(nt)
+            if r.get("sig") is not None or r.get("src") == "stream":  # stream recordings have no sell-route check: judge by the creator's buy alone
+                v, score, summary = verdict_from_roundtrip(nt.dev_tokens, 0.1, 0.1)
+                events.append(ScanNote(r["t"], mint, v, score, summary + ("; " if summary else "") + "no sell-route check (stream recording)"))
         elif k == "obs" and mint in launches:
             vs0, vt0 = last[mint]
             vs, vt = r["v_sol"], r["v_tokens"]
@@ -95,6 +98,9 @@ def to_events(rows: list[dict], fee: float = FEE) -> list[Event]:
             if "rt_back_sol" in r:  # older recordings kept the sell check on the first observation
                 v, score, summary = verdict_from_roundtrip(launches[mint].dev_tokens, r.get("rt_in_sol"), r.get("rt_back_sol"))
                 events.append(ScanNote(r["t"], mint, v, score, summary))
+        elif k == "trade" and mint in launches:  # a stream recording (live/stream.py): the real trade, with the wallet that made it
+            events.append(Trade(r["t"], mint, r.get("trader") or UNKNOWN_TRADER, r["side"], r["sol"], r["tokens"], r["v_sol"], r["v_tokens"]))
+            last[mint] = (r["v_sol"], r["v_tokens"])
         elif k == "chk" and mint in launches:
             v, score, summary = verdict_from_roundtrip(launches[mint].dev_tokens, r.get("rt_in_sol"), r.get("rt_back_sol"))
             events.append(ScanNote(r["t"], mint, v, score, summary))
@@ -116,4 +122,7 @@ def token_paths(rows: list[dict]) -> dict[str, dict]:
             out[mint]["obs"].append(r)
         elif k == "end":
             out[mint]["end"] = r
+        elif k == "trade":  # stream recordings: every trade is also a price observation, and the trades themselves are kept (with their wallets)
+            out[mint].setdefault("trades", []).append(r)
+            out[mint]["obs"].append({"k": "obs", "t": r["t"], "mint": mint, "v_sol": r["v_sol"], "v_tokens": r["v_tokens"]})
     return {m: v for m, v in out.items() if v["create"]}
