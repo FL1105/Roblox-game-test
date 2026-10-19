@@ -40,6 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--no-record", action="store_true")
     r = sub.add_parser("run", help="run an agent over consecutive seeds and record each round")
     r.add_argument("--agent", required=True, help="lazy, file:PATH or cmd:COMMAND")
+    r.add_argument("--mix", help="only these families, e.g. audit=6 or audit=4,facts=2 (default: the full round)")
     r.add_argument("--save", help="directory to write each round's answers to (use a path outside the repo)")
     r.add_argument("--name", help="name to record the agent under (default: the --agent value)")
     r.add_argument("--seed", type=int, default=1)
@@ -78,7 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "run":
         for i in range(a.rounds):
             seed = a.seed + i
-            tasks = generate(seed, tier=a.tier)
+            mix = {k: int(v) for k, v in (kv.split('=') for kv in a.mix.split(','))} if a.mix else None
+            tasks = generate(seed, mix, tier=a.tier)
             answers = agents.answers_for(a.agent, [t.public() for t in tasks])
             if a.save:
                 os.makedirs(a.save, exist_ok=True)

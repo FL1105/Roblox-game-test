@@ -194,6 +194,14 @@ class ClaudeAgent(unittest.TestCase):
         ok = self.stream({"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "zcat data/snapshots/raw_main_final.jsonl.gz | head"}}]}})
         self.assertFalse(claude_agent.parse_stream(ok)["outside"])
 
+    def test_lessons_condition_ships_only_the_lessons_file(self):
+        self.assertTrue(os.path.exists(os.path.join(claude_agent.ROOT, "gym", "lessons.md")))
+        with open(os.path.join(claude_agent.ROOT, "gym", "lessons.md")) as f:
+            text = f.read()
+        # general rules only: nothing from a generated task's truth or an id may leak into the lessons
+        self.assertNotRegex(text, r"\b[sh]\d+-(audit|facts|numbers|rules|repro)-\d+\b")
+        self.assertNotIn("expected", text.lower())
+
     def test_meta_reaches_the_ledger_rows(self):
         ts = tasks.generate(2)
         ans = {t.id: t.truth for t in ts}

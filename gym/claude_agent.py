@@ -22,12 +22,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKERS = int(os.environ.get("GYM_WORKERS", "4"))
 BUDGET = os.environ.get("GYM_TASK_BUDGET_USD", "1.5")
 TIMEOUT = int(os.environ.get("GYM_TASK_TIMEOUT_S", "900"))
-CONDITION = os.environ.get("GYM_CONDITION", "default")     # none: no skills in the workspace; default: available; required: told to load one first
+CONDITION = os.environ.get("GYM_CONDITION", "default")     # none: no skills; default: available; required: told to load one first; lessons: no skills, LESSONS.md to read
 TOOLS = ["Bash(python3:*)", "Bash(ls:*)", "Bash(zcat:*)", "Bash(head:*)", "Bash(wc:*)", "Read", "Glob", "Grep", "Skill"]
 OUTSIDE = re.compile(re.escape(ROOT) + r"|/home/user|tasks\.py|\bgym/|ledger\.json")
 
 REQUIRE = """Before you answer, load the single most relevant installed skill with the Skill tool, read the reference files it points to that apply (for example
 references/sharp_edges.md and references/validations.md when reviewing a backtest), and apply them.
+"""
+READ_LESSONS = """Before you answer, read LESSONS.md in the current directory and apply it.
 """
 NO_SKILLS = "The current directory holds data/snapshots/*.jsonl.gz. Python 3 is available, and so is the `duckdb` module for SQL over the files."
 WITH_SKILLS = """The current directory holds data/snapshots/*.jsonl.gz and project skills in .claude/skills (quantitative-research, backtesting-frameworks,
@@ -80,8 +82,8 @@ def parse_answer(result: str):
 
 
 def run_one(task: dict, ws: str) -> tuple[str, object, dict]:
-    prompt = WRAP.format(prompt=task["prompt"], fmt=task["answer_format"], env=NO_SKILLS if CONDITION == "none" else WITH_SKILLS,
-                         require=REQUIRE if CONDITION == "required" else "")
+    prompt = WRAP.format(prompt=task["prompt"], fmt=task["answer_format"], env=NO_SKILLS if CONDITION in ("none", "lessons") else WITH_SKILLS,
+                         require=REQUIRE if CONDITION == "required" else READ_LESSONS if CONDITION == "lessons" else "")
     cmd = ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--no-session-persistence",
            "--max-budget-usd", BUDGET, "--allowedTools", *TOOLS, "--disallowedTools", "WebFetch", "WebSearch"]
     for attempt in (1, 2):             # one retry when nothing usable came back (a rate limit, a dropped call)
@@ -104,7 +106,9 @@ def main() -> int:
     ws = tempfile.mkdtemp(prefix="gymws-")
     try:
         shutil.copytree(os.path.join(ROOT, "data", "snapshots"), os.path.join(ws, "data", "snapshots"))
-        if CONDITION != "none":
+        if CONDITION == "lessons":
+            shutil.copy(os.path.join(ROOT, "gym", "lessons.md"), os.path.join(ws, "LESSONS.md"))
+        if CONDITION in ("default", "required"):
             os.makedirs(os.path.join(ws, ".claude"))
             shutil.copytree(os.path.join(ROOT, ".claude", "skills"), os.path.join(ws, ".claude", "skills"))
         answers: dict = {}
