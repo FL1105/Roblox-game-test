@@ -288,7 +288,7 @@ def rules(rng: random.Random, tid: str) -> Task:
 NAMES = ["edge", "alpha", "sig", "rule", "entry"]
 
 
-def audit(rng: random.Random, tid: str, hard: bool = False) -> Task:
+def audit(rng: random.Random, tid: str, hard: bool = False, novel: bool = False) -> Task:
     n_flaws = rng.choices([0, 1, 2], [25, 45, 30])[0]
     bad = set(rng.sample(["A", "B", "C", "D", "E", "F", "G", "H"], n_flaws))
     thr, h, m, q = rng.choice([1.5, 2.0, 2.5]), rng.choice([30, 60, 90]), rng.choice([1.2, 1.3, 1.5]), rng.choice([0.8, 0.9])
@@ -298,11 +298,14 @@ def audit(rng: random.Random, tid: str, hard: bool = False) -> Task:
     few, many = rng.randint(11, 24), rng.randint(300, 900)
     cl_few, cl_many = rng.randint(5, 9), rng.randint(90, 200)
     lines = [f"# {rng.choice(NAMES)}: backtest of a launch-sniping rule", "feat = [tok.dev_sol for tok in tokens]            # decision-time field"]
-    if hard:
+    if hard or novel:
         lines.append(f"FEE = {FEE_SIDE / 100}                                      # per side")
     lines.append("")
+    nv = novel_variants(thr, m, k, few, many, cl_few, cl_many) if novel else {}
     # A: signal
-    if "A" in bad:
+    if novel:
+        lines += rng.choice(nv["A"][0] if "A" in bad else nv["A"][1])
+    elif "A" in bad:
         base = [
             [f"z = [(v - mean(feat)) / stdev(feat) for v in feat]          # standardise", f"signal = [x > {thr} for x in z]"],
             [f"hi = [max(px[i:i + {h}]) for i in range(len(px))]            # reference level", f"signal = [a > {m} * p for a, p in zip(hi, px)]"],
@@ -328,7 +331,9 @@ def audit(rng: random.Random, tid: str, hard: bool = False) -> Task:
         lines += rng.choice(subtle if hard else base)
     lines.append("")
     # B: evaluation
-    if "B" in bad:
+    if novel:
+        lines += rng.choice(nv["B"][0] if "B" in bad else nv["B"][1])
+    elif "B" in bad:
         base = [["best = max(grid, key=lambda p: pnl(p, data))", "report(pnl(best, data))"],
                 ["train, test = data[:cut], data[cut:]", "best = max(grid, key=lambda p: pnl(p, test))", "report(pnl(best, test))"]]
         subtle = [["cv = cross_val(grid, data, folds=5)                      # per setting", "best = max(grid, key=lambda p: cv[p])", "report(cv[best])"]]
@@ -340,7 +345,9 @@ def audit(rng: random.Random, tid: str, hard: bool = False) -> Task:
         lines += rng.choice(subtle if hard else base)
     lines.append("")
     # C: selection
-    if "C" in bad:
+    if novel:
+        lines += rng.choice(nv["C"][0] if "C" in bad else nv["C"][1])
+    elif "C" in bad:
         if hard:
             lines += [f"shortlist = [s for s in all_specs if prelim[s.name] > 0]      # {k} specs passed a first look", "score = {s.name: pnl(s, dev) for s in shortlist}",
                       "report(reality_check(score, trials=len(shortlist)))"]
@@ -357,7 +364,9 @@ def audit(rng: random.Random, tid: str, hard: bool = False) -> Task:
             ])
     lines.append("")
     # D: universe
-    if "D" in bad:
+    if novel:
+        lines += rng.choice(nv["D"][0] if "D" in bad else nv["D"][1])
+    elif "D" in bad:
         opts = ["universe = [t for t in tokens if t.n_quotes >= 20]            # needs some history"] if hard else [
             'universe = [t for t in tokens if t.reason == "graduated"]', "universe = [t for t in tokens if t.still_trading_today]", "universe = [t for t in tokens if max(t.px) > 1.05 * t.px[0]]"]
         lines.append(rng.choice(opts))
@@ -366,7 +375,9 @@ def audit(rng: random.Random, tid: str, hard: bool = False) -> Task:
             "universe = [t for t in tokens if t.first_quote_at is not None]       # known at decision time", "universe = window_launches(window)                  # defined by launch time only"]
         lines.append(rng.choice(opts))
     # E: period
-    if "E" in bad:
+    if novel:
+        lines += rng.choice(nv["E"][0] if "E" in bad else nv["E"][1])
+    elif "E" in bad:
         if hard:
             lines += ['recordings = ["raw_main_final", "raw_main_latest"]       # one session, 91 of its 100 minutes overlap', "data = [load(r) for r in recordings]", 'claim("the edge holds across market conditions")']
         else:
@@ -378,17 +389,23 @@ def audit(rng: random.Random, tid: str, hard: bool = False) -> Task:
             lines += [f"data = [load(r) for r in recordings]          # {nrec} recordings on different days", "report_by_recording(pnl, data)               # worst one shown too"]
     lines.append("")
     # F: costs
-    if "F" in bad:
+    if novel:
+        lines += rng.choice(nv["F"][0] if "F" in bad else nv["F"][1])
+    elif "F" in bad:
         lines.append("ret = [exit_px / entry_px - 1 for entry_px, exit_px in fills]")
     else:
         lines.append("ret = [exit_px / entry_px - 1 - 2 * FEE for entry_px, exit_px in fills]" if hard else f"ret = [exit_px / entry_px - 1 - 2 * {FEE_SIDE / 100} - TX_COST for entry_px, exit_px in fills]")
     # G: capacity
-    if "G" in bad:
+    if novel:
+        lines += rng.choice(nv["G"][0] if "G" in bad else nv["G"][1])
+    elif "G" in bad:
         lines += [f"size_sol = {big}                                    # per trade", "fill = quote_price"]
     else:
         lines += [f"size_sol = min({small}, 0.01 * pool_sol)               # per trade", "fill = walk_curve(size_sol, pool)"]
     # H: sample
-    if "H" in bad:
+    if novel:
+        lines += rng.choice(nv["H"][0] if "H" in bad else nv["H"][1])
+    elif "H" in bad:
         lines += ([f"n_trades = {many}                                     # in {cl_few} independent launch clusters", 'report("works", sharpe(ret))'] if hard else
                   [f"n_trades = {few}", 'report("works", sharpe(ret))'])
     else:
@@ -408,8 +425,47 @@ def audit(rng: random.Random, tid: str, hard: bool = False) -> Task:
     return Task(tid, "audit", ["quantitative-research", "backtesting-frameworks"], prompt, "JSON list of flaw codes, or []", sorted(truth), flaw_set(truth, allow))
 
 
+def novel_variants(thr: float, m: float, k: int, few: int, many: int, cl_few: int, cl_many: int) -> dict[str, tuple[list, list]]:
+    """Flaw patterns that appear nowhere in lessons.md or in the base and hard tiers: per slot, (flawed variants, clean variants)."""
+    sig = f"signal = [p > {m} * q for p, q in zip(px, ma20(px))]"
+    return {
+        "A": ([[f"px = px.interpolate()                                    # fill gaps in the quote series", sig],
+               ["day_hi = {d: max(day_px[d]) for d in days}                   # high of each day", "signal = [p > 0.95 * day_hi[day_of(t)] for t, p in zip(times, px)]"],
+               ["feat = feat.fillna(method='bfill')                           # fill missing fields", f"signal = [v > {thr} for v in feat]"]],
+              [[f"px = px.ffill()                                           # fill gaps in the quote series", sig],
+               ["run_hi = cummax(px)                                          # running high so far", "signal = [p > 0.95 * hi for p, hi in zip(px, run_hi)]"],
+               ["feat = feat.fillna(method='ffill')                           # fill missing fields", f"signal = [v > {thr} for v in feat]"]]),
+        "B": ([["model.fit(x_train, y_train, eval_set=(x_test, y_test), early_stopping_rounds=20)   # stop when the score stops improving", "report(score(model, x_test))"],
+               ["thr_best = max(thr_grid, key=lambda t: sharpe(ret_at(t, data)))", "report(sharpe(ret_at(thr_best, data)))"]],
+              [["model.fit(x_train, y_train, eval_set=(x_val, y_val), early_stopping_rounds=20)   # stop on a separate validation block", "report(score(model, x_test))"],
+               ["thr_best = max(thr_grid, key=lambda t: sharpe(ret_at(t, train)))", "report(sharpe(ret_at(thr_best, test)))"]]),
+        "C": ([[f"results = [run(spec) for spec in specs]                  # {k} entry rules", "results = [r for r in results if r.ok and r.pnl > 0]       # drop crashes and losers",
+                "report(reality_check(results, trials=len(results)))"],
+               [f"res = [run(FROZEN_SPEC, seed=s) for s in range({k})]       # {k} random seeds", "report(max(res))"]],
+              [[f"results = [run(spec) for spec in specs]                  # {k} entry rules", "ledger.append_all(specs)", "report(reality_check(results, trials=len(ledger)))"],
+               [f"res = [run(FROZEN_SPEC, seed=s) for s in range({k})]       # {k} random seeds", "report(mean(res), ci95(res))"]]),
+        "D": ([['universe = top_by_volume(tokens, as_of="today", n=100)'], ["tokens = [t for t in tokens if t.has_full_history]            # drop incomplete series"]],
+              [["universe = top_by_volume(tokens, as_of=decision_time, n=100)"], ["tokens = [t for t in tokens if t.listed_at <= decision_time]   # known at decision time"]]),
+        "E": ([['window = ("2026-03-03", "2026-03-09")                    # the week the data was collected', "data = load_window(*window)", 'claim("the edge is robust")']],
+              [["windows = monthly_windows(start='2025-01', end='2026-06')", "data = [load_window(*w) for w in windows]", "report_by_window(pnl, data)               # worst window shown too"]]),
+        "F": ([["gross = [exit_px / entry_px - 1 for entry_px, exit_px in fills]", "net = [g - 2 * FEE for g in gross]", "ret = gross                                   # headline series"],
+               ["pnl_sol = sum(size_sol * (exit_px / entry_px - 1) for entry_px, exit_px in fills)", "fees_sol = sum(2 * FEE * size_sol for _ in fills)         # tracked for the ledger", "report(pnl_sol)"]],
+              [["gross = [exit_px / entry_px - 1 for entry_px, exit_px in fills]", "net = [g - 2 * FEE for g in gross]", "ret = net                                     # headline series"],
+               ["pnl_sol = sum(size_sol * (exit_px / entry_px - 1) for entry_px, exit_px in fills)", "fees_sol = sum(2 * FEE * size_sol for _ in fills)         # tracked for the ledger", "report(pnl_sol - fees_sol)"]]),
+        "G": ([["size_sol = 0.4 * pool_sol                                # per trade", "fill = mid_quote"], ["size_sol = 30                                            # per trade", "fills = [first_quote(t) for t in entries]"]],
+              [["size_sol = 0.4 * pool_sol                                # per trade", "fill = walk_curve(size_sol, pool)"], ["size_sol = 30                                            # per trade", "fills = [walk_curve(size_sol, pool_at(t)) for t in entries]"]]),
+        "H": ([[f"n_trades = {many}                                     # {many} trades from {cl_few} launches (each trade a different exit rule on the same launch)", 'report("works", sharpe(ret))']],
+              [[f"n_trades = {many}                                     # {many} launches, one trade each", "report(mean(ret), block_bootstrap_ci(ret))"],
+               [f"n_trades = {many}                                     # {many} trades from {cl_many} launches (one exit rule, sizes vary)", "report(mean(ret), block_bootstrap_ci(ret))"]]),
+    }
+
+
 def audit_hard(rng: random.Random, tid: str) -> Task:
     return audit(rng, tid, hard=True)
+
+
+def audit_novel(rng: random.Random, tid: str) -> Task:
+    return audit(rng, tid, novel=True)
 
 
 # ---------------------------------------------------------------- the hard tier: joins and traps, multi-step statistics, subtle rules
@@ -517,16 +573,18 @@ def rules_hard(rng: random.Random, tid: str) -> Task:
 MIX = {"facts": 4, "audit": 6, "numbers": 3, "rules": 3, "repro": 2}
 MAKERS = {"facts": facts, "audit": audit, "numbers": numbers, "rules": rules, "repro": repro}
 MAKERS_HARD = {"facts": facts_hard, "audit": audit_hard, "numbers": numbers_hard, "rules": rules_hard, "repro": repro}
+MAKERS_NOVEL = {**MAKERS_HARD, "audit": audit_novel}       # flaw patterns held out from lessons.md and the other tiers
+TIERS = {"base": (MAKERS, "s"), "hard": (MAKERS_HARD, "h"), "novel": (MAKERS_NOVEL, "n")}
 
 
 def generate(seed: int, mix: dict[str, int] | None = None, tier: str = "base") -> list[Task]:
-    rng = random.Random(seed if tier == "base" else f"hard-{seed}")
-    makers = MAKERS_HARD if tier == "hard" else MAKERS
+    rng = random.Random(seed if tier == "base" else f"{tier}-{seed}")
+    makers, prefix = TIERS[tier]
     tasks = []
     for fam, n in (mix or MIX).items():
         for i in range(n):
             sub = random.Random(rng.random())
-            tasks.append(makers[fam](sub, f"{'h' if tier == 'hard' else 's'}{seed}-{fam}-{i + 1}"))
+            tasks.append(makers[fam](sub, f"{prefix}{seed}-{fam}-{i + 1}"))
     return tasks
 
 

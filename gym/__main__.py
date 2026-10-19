@@ -28,14 +28,14 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("prompts", help="write the prompts for a seed (no answers in them)")
     p.add_argument("--seed", type=int, required=True)
-    p.add_argument("--tier", choices=["base", "hard"], default="base")
+    p.add_argument("--tier", choices=["base", "hard", "novel"], default="base")
     p.add_argument("--out")
     g = sub.add_parser("grade", help="grade an answers file for a seed and record it")
     g.add_argument("--seed", type=int, required=True)
     g.add_argument("--answers", required=True)
     g.add_argument("--agent", required=True)
     g.add_argument("--split", choices=["dev", "sealed"], default="dev")
-    g.add_argument("--tier", choices=["base", "hard"], default="base")
+    g.add_argument("--tier", choices=["base", "hard", "novel"], default="base")
     g.add_argument("--reveal", action="store_true", help="show the expected answer for misses (dev seeds only)")
     g.add_argument("--no-record", action="store_true")
     r = sub.add_parser("run", help="run an agent over consecutive seeds and record each round")
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--seed", type=int, default=1)
     r.add_argument("--rounds", type=int, default=3)
     r.add_argument("--split", choices=["dev", "sealed"], default="dev")
-    r.add_argument("--tier", choices=["base", "hard"], default="base")
+    r.add_argument("--tier", choices=["base", "hard", "novel"], default="base")
     rp = sub.add_parser("report", help="show the ladder from the ledger")
     rp.add_argument("--agent")
     a = ap.parse_args(argv)
@@ -91,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     es = [e for e in ledger.load() if not a.agent or e["agent"] == a.agent]
     for ag in sorted({e["agent"] for e in es}):
-        for tier in ("base", "hard"):
+        for tier in ("base", "hard", "novel"):
             for split in ("dev", "sealed"):
                 sel = [e for e in es if e["agent"] == ag and e.get("tier", "base") == tier and e["split"] == split]
                 if sel:

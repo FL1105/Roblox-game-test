@@ -14,14 +14,15 @@ SEEDS = range(1, 8)
 
 # lines that appear only in the flawed variants of each slot of the audit generator
 FLAWED = {
-    "LOOKAHEAD": [r"mean\(feat\)", r"max\(px\[i:i \+ \d+\]\)", r"universe=all_launches\)", r"center=True", r"Scaler\(\)\.fit\(feat\)", r"zip\(bar_close, ma20\)"],
-    "OVERFIT": [r"pnl\(p, data\)", r"pnl\(p, test\)", r"report\(cv\[best\]\)"],
-    "MULTIPLE_TESTING": [r"report\(max\(score\.values\(\)\)\)", r"trials=len\(shortlist\)"],
-    "SURVIVORSHIP": [r'reason == "graduated"', r"still_trading_today", r"max\(t\.px\) > 1\.05", r"n_quotes >= 20"],
-    "ONE_REGIME": [r'claim\("the edge holds'],
+    "LOOKAHEAD": [r"mean\(feat\)", r"max\(px\[i:i \+ \d+\]\)", r"universe=all_launches\)", r"center=True", r"Scaler\(\)\.fit\(feat\)", r"zip\(bar_close, ma20\)",
+                  r"px\.interpolate\(\)", r"day_hi\[day_of\(t\)\]", r"fillna\(method='bfill'\)"],
+    "OVERFIT": [r"pnl\(p, data\)", r"pnl\(p, test\)", r"report\(cv\[best\]\)", r"eval_set=\(x_test, y_test\)", r"ret_at\(thr_best, data\)"],
+    "MULTIPLE_TESTING": [r"report\(max\(score\.values\(\)\)\)", r"trials=len\(shortlist\)", r"trials=len\(results\)", r"report\(max\(res\)\)"],
+    "SURVIVORSHIP": [r'reason == "graduated"', r"still_trading_today", r"max\(t\.px\) > 1\.05", r"n_quotes >= 20", r'as_of="today"', r"has_full_history"],
+    "ONE_REGIME": [r'claim\("the edge holds', r'claim\("the edge is robust'],
     # (the hard tier's flawed NO_COSTS line, capacity line and small-sample report are the same text as the base tier's)
-    "NO_COSTS": [r"^ret = \[exit_px / entry_px - 1 for"],
-    "CAPACITY": [r"^fill = quote_price"],
+    "NO_COSTS": [r"^ret = \[exit_px / entry_px - 1 for", r"^ret = gross", r"^report\(pnl_sol\)$"],
+    "CAPACITY": [r"^fill = quote_price", r"^fill = mid_quote", r"first_quote\(t\)"],
     "SMALL_SAMPLE": [r'report\("works"'],
 }
 FLAWED["SMALL_SAMPLE"].append(r"independent launch clusters\n.*works")
@@ -61,17 +62,35 @@ class Generation(unittest.TestCase):
             for t in tasks.generate(seed, {"audit": 3}, tier="hard"):
                 self.assertEqual(detect(t.prompt), set(t.truth), (seed, t.prompt))
 
+    def test_novel_tier_planted_flaws_match_independent_patterns(self):
+        seen = set()
+        for seed in range(1, 301):
+            for t in tasks.generate(seed, {"audit": 3}, tier="novel"):
+                self.assertEqual(detect(t.prompt), set(t.truth), (seed, t.prompt))
+                seen |= set(t.truth)
+        self.assertEqual(seen, set(tasks.FLAWS))          # every flaw code is planted somewhere
+
+    def test_novel_flaw_patterns_are_not_in_the_lessons_or_the_other_tiers(self):
+        with open(os.path.join(claude_agent.ROOT, "gym", "lessons.md")) as f:
+            lessons = f.read().lower()
+        # code tokens only: the lessons do state some of the principles (costs, universe, trial counts, sample size), in words
+        for needle in ("interpolate", "bfill", "early_stopping", "day_hi", "top_by_volume", "has_full_history", "mid_quote", "seed=s"):
+            self.assertNotIn(needle, lessons)
+        base_hard = "\n".join(t.prompt for seed in range(1, 60) for tier in ("base", "hard") for t in tasks.generate(seed, {"audit": 3}, tier=tier))
+        for needle in ("interpolate", "bfill", "early_stopping", "day_hi", "top_by_volume", "has_full_history", "mid_quote", "pnl_sol"):
+            self.assertNotIn(needle, base_hard)
+
 
 class Grading(unittest.TestCase):
     def test_oracle_scores_full_marks(self):
-        for tier in ("base", "hard"):
+        for tier in ("base", "hard", "novel"):
             for seed in SEEDS:
                 ts = tasks.generate(seed, tier=tier)
                 rows = ledger.score_round(ts, {t.id: t.truth for t in ts})
                 self.assertEqual(ledger.pct(rows), 100.0, [r for r in rows if r["score"] < 1])
 
     def test_overlapping_readings_are_accepted_for_the_planted_slot_only(self):
-        for tier in ("base", "hard"):
+        for tier in ("base", "hard", "novel"):
             for seed in range(1, 120):
                 for t in tasks.generate(seed, {"audit": 3}, tier=tier):
                     truth = set(t.truth)
@@ -81,6 +100,21 @@ class Grading(unittest.TestCase):
                         self.assertEqual(t.grade(sorted(truth | {"OVERFIT"})), 1.0)
                     stray = next(c for c in tasks.FLAWS if c not in truth and c not in ("OVERFIT", "MULTIPLE_TESTING"))
                     self.assertLess(t.grade(sorted(truth | {stray})), 1.0)   # an unrelated extra still costs
+
+    def test_the_review_skill_is_well_formed_and_holds_out_the_novel_patterns(self):
+        path = os.path.join(claude_agent.ROOT, ".claude", "skills", "backtest-review", "SKILL.md")
+        with open(path) as f:
+            text = f.read()
+        head = text.split("---")[1]
+        self.assertIn("name: backtest-review", head)
+        self.assertIn("description:", head)
+        low = text.lower()
+        # the skill is written from principles and from the base and hard tiers; it must not hint at the novel tier's forms
+        for needle in ("interpolate", "bfill", "backfill", "back-fill", "early stopping", "early_stopping", "day_hi", "top_by_volume", "has_full_history",
+                       "mid_quote", "random seed", "seeds", "exit variant", "exit rule", "crash", "unused series", "separate column", "not ended", "has not ended",
+                       "a mid", "today's data", "validation block", "loser", "net series", "computed-but"):
+            self.assertNotIn(needle, low)
+        self.assertNotRegex(text, r"\b[sh]\d+-(audit|facts|numbers|rules|repro)-\d+\b")
 
     def test_hard_tier_is_a_different_deterministic_set(self):
         a, b, base = tasks.generate(3, tier="hard"), tasks.generate(3, tier="hard"), tasks.generate(3)

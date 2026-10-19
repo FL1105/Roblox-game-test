@@ -22,6 +22,12 @@ python -m gym report
 | `repro` | a finding recomputed from price paths, including a time-ordered split | backtesting-frameworks, duckdb-query |
 | `rules` | COMPLY or REFUSE against this repo's own rules | repo rules |
 
+`--tier novel` (audits) uses flaw patterns that appear in neither the base and hard tiers nor `lessons.md`: look-ahead through interpolation, a
+back-filled gap or the day's own high; early stopping on the test fold; dropping losers before a correction or taking the best of many random seeds;
+today's top tokens; gross returns reported beside computed net ones; trades that are really exit variants of a few launches. The lessons do state some of
+these as principles in words (costs, universe, trial counts, sample size), so for those the tier tests transfer from a principle to a new form; for
+look-ahead and overfitting it is new ground.
+
 `--tier hard` swaps in subtle versions: a centred rolling window, a scaler fitted on every row, a fee constant that is defined but never used,
 a correction counted over the shortlist only, survivorship through "needs 20 quotes", clusters that are not independent, joins and data traps,
 effective sample size, the expected maximum of many null Sharpe ratios, and policy cases that are one step less obvious.
