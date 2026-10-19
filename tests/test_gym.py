@@ -134,6 +134,13 @@ class Ladder(unittest.TestCase):
         self.assertEqual(tasks.level_of(78), (5, "Expert"))
         self.assertEqual(tasks.level_of(100), (6, "Mastermind"))
 
+    def test_a_level_needs_evidence(self):
+        self.assertEqual(tasks.level_of(100, 10), (3, "Practitioner"))
+        self.assertEqual(tasks.level_of(100, 30), (4, "Specialist"))
+        self.assertEqual(tasks.level_of(100, 60), (5, "Expert"))
+        self.assertEqual(tasks.level_of(100, 100), (6, "Mastermind"))
+        self.assertEqual(tasks.level_of(60, 10), (3, "Practitioner"))      # a low score is never raised by the cap
+
     def test_ledger_replaces_a_repeated_round_and_summarises(self):
         old = ledger.PATH
         with tempfile.TemporaryDirectory() as d:
@@ -145,7 +152,7 @@ class Ladder(unittest.TestCase):
                 es = ledger.load()
                 self.assertEqual(len(es), 1)
                 s = ledger.summarize(es)
-                self.assertEqual((s["overall"], s["level"]), (100.0, 6))
+                self.assertEqual((s["overall"], s["level"]), (100.0, 3))   # 18 tasks of evidence: capped at Practitioner
             finally:
                 ledger.PATH = old
 

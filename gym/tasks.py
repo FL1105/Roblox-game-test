@@ -530,9 +530,18 @@ def generate(seed: int, mix: dict[str, int] | None = None, tier: str = "base") -
     return tasks
 
 
-def level_of(score: float) -> tuple[int, str]:
+# a level needs evidence: with few tasks behind a score, the level is capped (a handful of right answers is not mastery)
+EVIDENCE_CAPS = [(20, 3), (50, 4), (100, 5)]      # (fewer than n tasks) -> at most this level
+
+
+def level_of(score: float, n: int | None = None) -> tuple[int, str]:
     lv = LEVELS[0]
     for entry in LEVELS:
         if score >= entry[0]:
             lv = entry
+    if n is not None:
+        for fewer_than, cap in EVIDENCE_CAPS:
+            if n < fewer_than and lv[1] > cap:
+                lv = LEVELS[cap - 1]
+                break
     return lv[1], lv[2]

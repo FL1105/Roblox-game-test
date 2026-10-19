@@ -68,7 +68,7 @@ def summarize(entries: list[dict]) -> dict:
         out = {}
         for k, v in sorted(d.items()):
             sc = 100 * statistics.mean(v)
-            lv, name = level_of(sc)
+            lv, name = level_of(sc, len(v))
             out[k] = {"score": round(sc, 1), "n": len(v), "level": lv, "name": name}
         return out
     used: dict[str, int] = defaultdict(int)
@@ -78,7 +78,7 @@ def summarize(entries: list[dict]) -> dict:
                 used[u] += 1
     allscores = [r["score"] for e in entries for r in e["items"]]
     overall = 100 * statistics.mean(allscores) if allscores else 0.0
-    lv, name = level_of(overall)
+    lv, name = level_of(overall, len(allscores))
     return {"overall": round(overall, 1), "level": lv, "name": name, "families": pack(fam), "skills": pack(skl),
             "rounds": [(e["seed"], e["score"]) for e in entries], "used": dict(used),
             "cost": round(sum(r.get("cost", 0) for e in entries for r in e["items"]), 2),
