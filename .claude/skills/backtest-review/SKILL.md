@@ -1,6 +1,6 @@
 ---
 name: backtest-review
-description: Review a backtest, strategy script or research result for the flaws that make its numbers untrustworthy. Use whenever asked to review, audit, check, critique or sanity-test a backtest, a strategy, a research script or a reported result, or to find look-ahead, leakage, overfitting, multiple-testing, survivorship, cost or sample-size problems in one. Judges only what the code shows and returns the flaws found, or none.
+description: Review a backtest, strategy script or research result for the flaws that make its numbers untrustworthy. Use this skill first, before answering, whenever a backtest, strategy script, trading rule, signal or reported result is shown to you for review, audit, critique or sanity-checking, or whenever someone asks whether a result can be trusted or how it could be inflated. It carries the checklist for look-ahead, overfitting, multiple testing, survivorship, regime, costs, capacity and sample size, and it should be loaded even when the review looks simple. Judges only what the code shows and returns the flaws found, or none.
 ---
 
 # Backtest review
