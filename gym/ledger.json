@@ -1177,5 +1177,3011 @@
     "score": 1.0
    }
   ]
+ },
+ {
+  "agent": "claude-bot",
+  "tier": "base",
+  "seed": 101,
+  "split": "dev",
+  "score": 97.2,
+  "items": [
+   {
+    "id": "s101-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0351,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.036,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0351,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0354,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0354,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.034,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.5,
+    "used": [],
+    "cost": 0.0392,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.034,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0336,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0367,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0276,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0289,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0286,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0282,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0284,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0297,
+    "voided": false
+   },
+   {
+    "id": "s101-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0388,
+    "voided": false
+   },
+   {
+    "id": "s101-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0476,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-none",
+  "tier": "base",
+  "seed": 101,
+  "split": "dev",
+  "score": 98.1,
+  "items": [
+   {
+    "id": "s101-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0328,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0413,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0335,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0326,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.6666666666666666,
+    "used": [],
+    "cost": 0.032,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0309,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0366,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0337,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0307,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0332,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0251,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0261,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0262,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0258,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0261,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0286,
+    "voided": false
+   },
+   {
+    "id": "s101-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0455,
+    "voided": false
+   },
+   {
+    "id": "s101-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0453,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-required",
+  "tier": "base",
+  "seed": 101,
+  "split": "dev",
+  "score": 95.4,
+  "items": [
+   {
+    "id": "s101-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0515,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0551,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0497,
+    "voided": false
+   },
+   {
+    "id": "s101-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0475,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.6666666666666666,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0442,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0428,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.5,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0495,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0417,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0425,
+    "voided": false
+   },
+   {
+    "id": "s101-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0428,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0362,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0407,
+    "voided": false
+   },
+   {
+    "id": "s101-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0377,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0376,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0388,
+    "voided": false
+   },
+   {
+    "id": "s101-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0387,
+    "voided": false
+   },
+   {
+    "id": "s101-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0581,
+    "voided": false
+   },
+   {
+    "id": "s101-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.06,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot",
+  "tier": "base",
+  "seed": 102,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "s102-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0345,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0344,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.036,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0371,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0356,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0341,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0335,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0376,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0354,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.034,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.028,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0279,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.028,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0283,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0282,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0281,
+    "voided": false
+   },
+   {
+    "id": "s102-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0387,
+    "voided": false
+   },
+   {
+    "id": "s102-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0508,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-none",
+  "tier": "base",
+  "seed": 102,
+  "split": "dev",
+  "score": 97.2,
+  "items": [
+   {
+    "id": "s102-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0321,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0318,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0424,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0339,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0315,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.5,
+    "used": [],
+    "cost": 0.0319,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.032,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.032,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0353,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0319,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0259,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0257,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0257,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0258,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0258,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0257,
+    "voided": false
+   },
+   {
+    "id": "s102-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0374,
+    "voided": false
+   },
+   {
+    "id": "s102-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0655,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-required",
+  "tier": "base",
+  "seed": 102,
+  "split": "dev",
+  "score": 94.4,
+  "items": [
+   {
+    "id": "s102-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0473,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.044,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0466,
+    "voided": false
+   },
+   {
+    "id": "s102-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0488,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0416,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0424,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.043,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.5,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0435,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0427,
+    "voided": false
+   },
+   {
+    "id": "s102-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.5,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0472,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0366,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0366,
+    "voided": false
+   },
+   {
+    "id": "s102-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0382,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0368,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0383,
+    "voided": false
+   },
+   {
+    "id": "s102-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0376,
+    "voided": false
+   },
+   {
+    "id": "s102-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0481,
+    "voided": false
+   },
+   {
+    "id": "s102-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0542,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot",
+  "tier": "hard",
+  "seed": 101,
+  "split": "dev",
+  "score": 91.7,
+  "items": [
+   {
+    "id": "h101-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0445,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0367,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0504,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0444,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [],
+    "cost": 0.0426,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0366,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0367,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.5,
+    "used": [],
+    "cost": 0.0396,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0369,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.038,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0274,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0284,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0279,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0294,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0281,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0285,
+    "voided": false
+   },
+   {
+    "id": "h101-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0457,
+    "voided": false
+   },
+   {
+    "id": "h101-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0441,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-none",
+  "tier": "hard",
+  "seed": 101,
+  "split": "dev",
+  "score": 94.4,
+  "items": [
+   {
+    "id": "h101-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0413,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0407,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0339,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0415,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [],
+    "cost": 0.0374,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0338,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0341,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0325,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0313,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0324,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.025,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0301,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0256,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0265,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0257,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0261,
+    "voided": false
+   },
+   {
+    "id": "h101-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0431,
+    "voided": false
+   },
+   {
+    "id": "h101-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0419,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot",
+  "tier": "hard",
+  "seed": 102,
+  "split": "dev",
+  "score": 91.7,
+  "items": [
+   {
+    "id": "h102-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0408,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0382,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0335,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.044,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0361,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0359,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0397,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0373,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [],
+    "cost": 0.0367,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.5,
+    "used": [],
+    "cost": 0.0394,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0275,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.028,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0275,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0283,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0303,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0287,
+    "voided": false
+   },
+   {
+    "id": "h102-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0399,
+    "voided": false
+   },
+   {
+    "id": "h102-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0469,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-required",
+  "tier": "hard",
+  "seed": 101,
+  "split": "dev",
+  "score": 91.7,
+  "items": [
+   {
+    "id": "h101-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0555,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0492,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0555,
+    "voided": false
+   },
+   {
+    "id": "h101-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0492,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0492,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0423,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0428,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.5,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0476,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0439,
+    "voided": false
+   },
+   {
+    "id": "h101-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0435,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0363,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0367,
+    "voided": false
+   },
+   {
+    "id": "h101-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0393,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0396,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.038,
+    "voided": false
+   },
+   {
+    "id": "h101-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0391,
+    "voided": false
+   },
+   {
+    "id": "h101-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0544,
+    "voided": false
+   },
+   {
+    "id": "h101-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0488,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-none",
+  "tier": "hard",
+  "seed": 102,
+  "split": "dev",
+  "score": 83.3,
+  "items": [
+   {
+    "id": "h102-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0442,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0404,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0381,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0422,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0317,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0336,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [],
+    "cost": 0.0353,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0342,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [],
+    "cost": 0.035,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [],
+    "cost": 0.0325,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.025,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0261,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.025,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0259,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0265,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0259,
+    "voided": false
+   },
+   {
+    "id": "h102-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0393,
+    "voided": false
+   },
+   {
+    "id": "h102-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0362,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-required",
+  "tier": "hard",
+  "seed": 102,
+  "split": "dev",
+  "score": 83.3,
+  "items": [
+   {
+    "id": "h102-facts-1",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0511,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-2",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0547,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-3",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0437,
+    "voided": false
+   },
+   {
+    "id": "h102-facts-4",
+    "family": "facts",
+    "skills": [
+     "duckdb-query",
+     "duckdb-read-file",
+     "sql-optimization-patterns"
+    ],
+    "score": 1.0,
+    "used": [
+     "duckdb-read-file"
+    ],
+    "cost": 0.0664,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0431,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.043,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0487,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0431,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.044,
+    "voided": false
+   },
+   {
+    "id": "h102-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [
+     "backtesting-frameworks"
+    ],
+    "cost": 0.0426,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-1",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0362,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-2",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0391,
+    "voided": false
+   },
+   {
+    "id": "h102-numbers-3",
+    "family": "numbers",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0362,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-1",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0379,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-2",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0387,
+    "voided": false
+   },
+   {
+    "id": "h102-rules-3",
+    "family": "rules",
+    "skills": [
+     "repo-rules"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.037,
+    "voided": false
+   },
+   {
+    "id": "h102-repro-1",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0496,
+    "voided": false
+   },
+   {
+    "id": "h102-repro-2",
+    "family": "repro",
+    "skills": [
+     "backtesting-frameworks",
+     "duckdb-query"
+    ],
+    "score": 1.0,
+    "used": [
+     "quantitative-research"
+    ],
+    "cost": 0.0538,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-none",
+  "tier": "hard",
+  "seed": 9001,
+  "split": "sealed",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "h9001-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0324,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.032,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0347,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0325,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0342,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0333,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-lessons",
+  "tier": "hard",
+  "seed": 9001,
+  "split": "sealed",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "h9001-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0395,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.041,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0419,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0408,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0416,
+    "voided": false
+   },
+   {
+    "id": "h9001-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0426,
+    "voided": false
+   }
+  ]
  }
 ]
