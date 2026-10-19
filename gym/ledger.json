@@ -5317,5 +5317,879 @@
     "voided": false
    }
   ]
+ },
+ {
+  "agent": "claude-bot-none",
+  "tier": "novel",
+  "seed": 201,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n201-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0348,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0353,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0317,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0324,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0316,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0318,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-review_required",
+  "tier": "novel",
+  "seed": 201,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n201-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0425,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0413,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0417,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0419,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0413,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0423,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-review",
+  "tier": "novel",
+  "seed": 201,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n201-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0445,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0374,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0343,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0351,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0346,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.036,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-none",
+  "tier": "novel",
+  "seed": 202,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n202-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0353,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0311,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0337,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0318,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0332,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.032,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-review_required",
+  "tier": "novel",
+  "seed": 202,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n202-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0426,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.042,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0419,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0431,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0418,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.042,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-review",
+  "tier": "novel",
+  "seed": 202,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n202-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0362,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0346,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0338,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0356,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0359,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0456,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-review2",
+  "tier": "novel",
+  "seed": 201,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n201-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0369,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0375,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0365,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0363,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0359,
+    "voided": false
+   },
+   {
+    "id": "n201-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0366,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-review2",
+  "tier": "novel",
+  "seed": 202,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n202-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0362,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0356,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0351,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0363,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0364,
+    "voided": false
+   },
+   {
+    "id": "n202-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0368,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-review2",
+  "tier": "novel",
+  "seed": 203,
+  "split": "dev",
+  "score": 100.0,
+  "items": [
+   {
+    "id": "n203-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0418,
+    "voided": false
+   },
+   {
+    "id": "n203-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0421,
+    "voided": false
+   },
+   {
+    "id": "n203-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0423,
+    "voided": false
+   },
+   {
+    "id": "n203-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0418,
+    "voided": false
+   },
+   {
+    "id": "n203-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.0422,
+    "voided": false
+   },
+   {
+    "id": "n203-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [
+     "backtest-review"
+    ],
+    "cost": 0.042,
+    "voided": false
+   }
+  ]
+ },
+ {
+  "agent": "claude-bot-none",
+  "tier": "hard",
+  "seed": 9201,
+  "split": "sealed",
+  "score": 66.7,
+  "items": [
+   {
+    "id": "h9201-audit-1",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [],
+    "cost": 0.0359,
+    "voided": false
+   },
+   {
+    "id": "h9201-audit-2",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0321,
+    "voided": false
+   },
+   {
+    "id": "h9201-audit-3",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0352,
+    "voided": false
+   },
+   {
+    "id": "h9201-audit-4",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0312,
+    "voided": false
+   },
+   {
+    "id": "h9201-audit-5",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 0.0,
+    "used": [],
+    "cost": 0.0357,
+    "voided": false
+   },
+   {
+    "id": "h9201-audit-6",
+    "family": "audit",
+    "skills": [
+     "quantitative-research",
+     "backtesting-frameworks"
+    ],
+    "score": 1.0,
+    "used": [],
+    "cost": 0.0317,
+    "voided": false
+   }
+  ]
  }
 ]
