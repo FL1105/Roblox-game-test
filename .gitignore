@@ -16,3 +16,7 @@ data/snapshots/raw_run2_latest.jsonl.gz
 
 # DuckDB skill session state (local)
 .duckdb-skills/
+
+# gym
+gym/ledger.json.lock
+gym/ledger.json.tmp
