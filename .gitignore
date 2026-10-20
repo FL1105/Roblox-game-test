@@ -13,3 +13,5 @@ research/ledger/vectors/
 !research/holdout_log.jsonl
 data/snapshots/raw_run2_latest.jsonl.gz
 *.pkl
+kalshi_btc15/cache/
+kalshi_btc15/reports/

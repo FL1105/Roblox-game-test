@@ -1,0 +1,61 @@
+PRE-REGISTRATION: Kalshi 15-minute BTC up/down, "trade the last 2.5 to 2 minutes"
+Written 2026-10-20, before any Kalshi price, any BTC spot price or any market result was read.
+Do not edit after results exist. A change of plan goes in a new dated file, and the old one stays.
+
+QUESTION
+Does buying the trending side of KXBTC15M between 12:30 and 13:00 into the 15-minute window (2:30 to 2:00 left)
+make money after the spread and Kalshi's fee? And does a gap-versus-volatility model, or a bias in how cheap
+and expensive contracts are priced, do better than the plain trend rule?
+
+UNIVERSE
+Every settled KXBTC15M market whose close time falls in the last 180 days (or as far back as the API serves, if
+less). The newest 20 minutes are excluded so every market has settled. Markets with no quote at the entry minute,
+a missing side, or a bid/ask spread above 10 cents are skipped and counted, never filled in.
+
+ENTRY AND FILL (identical for every strategy)
+- Data is 1-minute candles, so the entry is the quote at the close of the candle ending 120 s before close (the
+  13:00 mark, 2:00 left, the end of the user's window). 12:30 cannot be observed with 1-minute data.
+- Buying YES costs the YES ask. Buying NO costs 100 minus the YES bid. One order of 10 contracts, taker.
+- Fee: ceil(0.07 * multiplier * C * P * (1 - P) to the next cent) for the whole order, divided back per contract.
+  The multiplier is read from the series object. P&L per contract = payoff (100 or 0) - price - fee, in cents.
+- The result is Kalshi's own recorded result, never inferred from BTC data.
+
+SPOT DATA
+Coinbase BTC-USD 1-minute candles. Trend is measured against the Coinbase price at the window start, not against
+Kalshi's strike, so a constant exchange-versus-index offset cannot leak in. The offset is reported as a diagnostic.
+
+THE FIVE PRE-REGISTERED STRATEGIES (the only ones that get a verdict)
+1. trend_open    YES if spot at entry > spot at window start, NO if lower. (The user's rule.)
+2. trend_mom3    YES if spot at entry > spot 3 minutes earlier, NO if lower.
+3. trend_kalshi  YES if the YES mid-price at entry > its value 3 minutes earlier, NO if lower.
+4. model_edge    p_up = Phi(gap / (sigma * sqrt(tau_eff))), gap = ln(spot_entry / spot_start), sigma = std of the
+                 trailing 60 one-minute log returns up to the entry (per-minute), tau_eff = minutes left - 2/3
+                 (the market settles on a 60-second average, which cuts the variance of the final value).
+                 Buy the side with the larger edge (model probability minus price minus fee), only if it is at
+                 least 3 cents. The 3 cents is fixed in advance and not tuned.
+5. favorite      Buy whichever side has the higher price (YES mid above 50 -> YES, below -> NO).
+
+CONTROLS (reported, no verdict): always_yes, always_no. They show the fee and spread drag and the base rate.
+
+TIME SPLIT
+Markets are ordered by close time. The first 60% are in-sample, the last 40% out-of-sample. Nothing is fitted, so
+the split is only there to stop me from reading a result off the same data I looked at while designing the report.
+
+DECISION RULE
+A strategy is declared to have an edge only if ALL hold:
+ (a) out-of-sample trades >= 300;
+ (b) out-of-sample mean P&L per contract > 0 with one-sided p < 0.01 (0.05 divided by the 5 strategies);
+ (c) in-sample mean P&L per contract is also > 0.
+Otherwise the verdict is "no edge shown", whatever the point estimate looks like.
+
+EXPLORATORY (labelled as such, no verdicts, may not be used to rescue a failed strategy)
+- Win rate and P&L by price bucket for both sides (the favorite-longshot check).
+- model_edge with thresholds 0, 1, 2, 3, 5, 8 cents.
+- Entry 180, 240 and 300 s before close.
+- Brier score of the model, the market mid-price and a 50/50 blend.
+- Losing-streak and win/loss size statistics, because the plain trend rule wins often and loses big.
+
+KNOWN LIMITATIONS
+Fills are assumed at the quoted best price for 10 contracts with no queue or depth data. Candle quotes are the
+close of each minute, not the moment of the order. The 60-second settlement average is from memory and is
+checked against the market's rules text by `python -m kalshi_btc15 probe`.
