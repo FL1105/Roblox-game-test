@@ -8,7 +8,7 @@ data, no API key, no orders.** Standard library only, Python 3.10+.
 python -m kalshi_btc15 probe                    # print the raw API responses this code relies on (run this first)
 python -m kalshi_btc15 backtest --days 400      # download (cached) and write kalshi_btc15/reports/report_<date>.md
 python -m kalshi_btc15 backtest --no-spot       # Kalshi only, no Coinbase (only the Kalshi-price strategies run)
-python -m unittest tests.test_kalshi_btc15      # 25 tests, no network needed
+python -m unittest tests.test_kalshi_btc15      # 27 tests, no network needed
 ```
 
 Needs outbound HTTPS to `api.elections.kalshi.com` (markets, candles) and `api.exchange.coinbase.com` (BTC-USD

@@ -39,7 +39,7 @@ class SpotSeries:
             rows = read_cache(path)
             if rows is None:
                 rows = get_json(f"{BASE}/products/{product}/candles",
-                                {"granularity": 60, "start": iso(chunk), "end": iso(chunk + span - 60)}, pause=0.12)
+                                {"granularity": 60, "start": iso(chunk), "end": iso(chunk + span - 60)})
                 if chunk + span < time.time() - 120:  # never cache a chunk that is still being written
                     write_cache(path, rows)
             for t, _low, _high, op, cl, _vol in rows:  # Coinbase row: [time, low, high, open, close, volume]

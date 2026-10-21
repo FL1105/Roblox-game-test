@@ -3,7 +3,7 @@ import random
 import unittest
 from collections import Counter
 
-from kalshi_btc15.api import Candle, Market, cents, parse_candle, parse_market
+from kalshi_btc15.api import Candle, Market, candle_batches, cents, parse_candle, parse_market
 from kalshi_btc15.data import MOM_MIN, Sample, build_samples
 from kalshi_btc15.report import ALPHA, preregistered, render, verdict
 from kalshi_btc15.spot import SpotSeries
@@ -116,6 +116,21 @@ class Parsing(unittest.TestCase):
         m = parse_market({"ticker": "X", "close_time": "2026-10-20T08:30:00Z", "result": "yes", "floor_strike": 100000.5})
         self.assertEqual((m.ticker, m.yes_won, m.strike), ("X", True, 100000.5))
         self.assertIsNone(parse_market({"ticker": "X", "close_time": "2026-10-20T08:30:00Z", "result": ""}))
+
+
+class Batching(unittest.TestCase):
+    def test_batches_stay_under_the_requested_candle_cap(self):
+        markets = [Market(f"T{i}", 900 * i, True, None) for i in range(1, 400)]
+        batches = candle_batches(markets)
+        self.assertEqual(sum(map(len, batches)), len(markets))
+        for b in batches:
+            span_min = (b[-1].close_ts - b[0].close_ts + 900 + 120) / 60
+            self.assertLessEqual(len(b) * span_min, 10_000)
+        self.assertGreater(len(batches[0]), 10)
+
+    def test_a_gap_in_the_series_starts_a_new_batch(self):
+        batches = candle_batches([Market("a", 900, True, None), Market("b", 900 * 500, True, None)])
+        self.assertEqual([len(b) for b in batches], [1, 1])
 
 
 class Spot(unittest.TestCase):

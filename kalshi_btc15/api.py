@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -29,24 +30,47 @@ class ApiError(RuntimeError):
         self.code = code
 
 
-def get_json(url: str, params: dict | None = None, retries: int = 6, pause: float = 0.06) -> dict | list:
-    """GET with retry on 429 / 5xx / network errors (exponential backoff); other HTTP errors raise ApiError."""
+MIN_INTERVAL = 0.12  # seconds between requests, shared by all threads; roughly 8 requests a second
+_gate = {"lock": threading.Lock(), "next": 0.0, "interval": MIN_INTERVAL}
+
+
+def _wait_turn() -> None:
+    with _gate["lock"]:
+        now = time.monotonic()
+        wait = max(0.0, _gate["next"] - now)
+        _gate["next"] = max(now, _gate["next"]) + _gate["interval"]
+    if wait:
+        time.sleep(wait)
+
+
+def _adapt(rate_limited: bool) -> None:
+    """Halve the request rate (down to one every 2 s) after a 429; creep back towards MIN_INTERVAL on success."""
+    with _gate["lock"]:
+        _gate["interval"] = min(2.0, _gate["interval"] * 2) if rate_limited else max(MIN_INTERVAL, _gate["interval"] * 0.97)
+
+
+def get_json(url: str, params: dict | None = None, retries: int = 8) -> dict | list:
+    """GET with a shared rate limit; retries on 429 / 5xx / network errors, other HTTP errors raise ApiError."""
     full = url + ("?" + urllib.parse.urlencode(params) if params else "")
     last = None
     for attempt in range(retries):
+        _wait_turn()
         try:
             req = urllib.request.Request(full, headers={"Accept": "application/json", "User-Agent": "kalshi-btc15-research/1"})
             with urllib.request.urlopen(req, timeout=30) as resp:
                 body = json.load(resp)
-            time.sleep(pause)
+            _adapt(False)
             return body
         except urllib.error.HTTPError as e:
             if e.code != 429 and e.code < 500:
                 raise ApiError(f"HTTP {e.code} for {full}", e.code) from e
             last = e
+            _adapt(e.code == 429)
+            retry_after = e.headers.get("Retry-After") if e.headers else None
+            time.sleep(float(retry_after) if retry_after and retry_after.replace(".", "").isdigit() else min(30.0, 1.5 ** attempt))
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             last = e
-        time.sleep(min(30.0, 1.5 ** attempt))
+            time.sleep(min(30.0, 1.5 ** attempt))
     raise ApiError(f"gave up after {retries} tries on {full}: {last}")
 
 
@@ -170,18 +194,71 @@ def candles(series: str, market: Market, window_s: int = 900, period_min: int = 
     return [parse_candle(c) for c in raw]
 
 
-def prefetch_candles(series: str, markets: list[Market], workers: int = 4, progress=None) -> None:
-    """Download (and cache) candles for every market. A market that fails is left for a later run."""
-    def one(m: Market):
-        try:
-            candles(series, m)
-        except ApiError:
-            return m.ticker
-        return None
+def _candle_path(ticker: str) -> Path:
+    return CACHE / "candles" / f"{ticker}.json"
+
+
+def candle_batches(markets: list[Market], budget: int = 9000, window_s: int = 900) -> list[list[Market]]:
+    """Group markets (by close time) so each batch stays under the endpoint's cap of 10,000 requested candles.
+
+    The cap counts markets x minutes in the shared time range, so consecutive 15-minute markets fit about 20 a call.
+    """
+    batches: list[list[Market]] = []
+    for m in sorted(markets, key=lambda x: x.close_ts):
+        if batches:
+            span_min = (m.close_ts - batches[-1][0].close_ts + window_s + 120) / 60
+            if (len(batches[-1]) + 1) * span_min <= budget:
+                batches[-1].append(m)
+                continue
+        batches.append([m])
+    return batches
+
+
+def historical_cutoff() -> int:
+    """Markets that settled before this time are served by /historical/*; the batch candle call returns nothing for them."""
+    try:
+        return iso_ts(get_json(f"{BASE}/historical/cutoff")["market_settled_ts"])
+    except (ApiError, KeyError, ValueError):
+        return 0
+
+
+def prefetch_candles(series: str, markets: list[Market], workers: int = 6, progress=None) -> None:
+    """Download (and cache) candles for every market.
+
+    Recent markets go ~20 to a call via /markets/candlesticks; markets older than the historical cutoff go one
+    call each (in parallel, under the shared rate limit). A market the batch call does not return falls back to a
+    single call. A market that still fails is left for a later run.
+    """
+    todo = [m for m in markets if not _candle_path(m.ticker).exists()]
+    cutoff = historical_cutoff()
+    recent = [m for m in todo if m.close_ts >= cutoff]
+    tasks = candle_batches(recent) + [[m] for m in todo if m.close_ts < cutoff]
+    failed = done = 0
+
+    def run_task(batch: list[Market]) -> int:
+        got: dict[str, list] = {}
+        if len(batch) > 1:
+            try:
+                body = get_json(f"{BASE}/markets/candlesticks", {
+                    "market_tickers": ",".join(m.ticker for m in batch), "start_ts": batch[0].close_ts - 960,
+                    "end_ts": batch[-1].close_ts + 60, "period_interval": 1})
+                got = {row["market_ticker"]: row.get("candlesticks", []) for row in body.get("markets", [])}
+            except ApiError:
+                pass
+        bad = 0
+        for m in batch:
+            if got.get(m.ticker):
+                write_cache(_candle_path(m.ticker), got[m.ticker])
+                continue
+            try:
+                candles(series, m)
+            except ApiError:
+                bad += 1
+        return bad
 
     with ThreadPoolExecutor(workers) as pool:
-        failed = 0
-        for i, bad in enumerate(pool.map(one, markets), 1):
-            failed += bad is not None
-            if progress and i % 200 == 0:
-                progress(i, len(markets), failed)
+        for batch, bad in zip(tasks, pool.map(run_task, tasks)):
+            failed += bad
+            before, done = done, done + len(batch)
+            if progress and done // 1000 > before // 1000:
+                progress(done, len(todo), failed)
