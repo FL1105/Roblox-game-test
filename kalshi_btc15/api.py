@@ -31,41 +31,53 @@ class ApiError(RuntimeError):
 
 
 MIN_INTERVAL = 0.22  # seconds between requests, shared by all threads; about 4.5 a second, the measured sustainable rate
-_gate = {"lock": threading.Lock(), "next": 0.0, "interval": MIN_INTERVAL}
 
 
-def _wait_turn() -> None:
-    with _gate["lock"]:
+def new_gate(min_interval: float = MIN_INTERVAL) -> dict:
+    """A request pacer. Give each host its own so that one host's 429s do not slow another."""
+    return {"lock": threading.Lock(), "next": 0.0, "interval": min_interval, "min": min_interval}
+
+
+_gate = new_gate()
+
+
+def _wait_turn(gate: dict) -> None:
+    with gate["lock"]:
         now = time.monotonic()
-        wait = max(0.0, _gate["next"] - now)
-        _gate["next"] = max(now, _gate["next"]) + _gate["interval"]
+        wait = max(0.0, gate["next"] - now)
+        gate["next"] = max(now, gate["next"]) + gate["interval"]
     if wait:
         time.sleep(wait)
 
 
-def _adapt(rate_limited: bool) -> None:
-    """Slow down by half (to at most one request every 1.5 s) after a 429; speed back up towards MIN_INTERVAL on success."""
-    with _gate["lock"]:
-        _gate["interval"] = min(1.5, _gate["interval"] * 1.5) if rate_limited else max(MIN_INTERVAL, _gate["interval"] * 0.9)
+def _adapt(gate: dict, rate_limited: bool) -> None:
+    """Slow down by half (to at most one request every 1.5 s) after a 429; speed back up towards the minimum on success."""
+    with gate["lock"]:
+        gate["interval"] = min(1.5, gate["interval"] * 1.5) if rate_limited else max(gate["min"], gate["interval"] * 0.9)
 
 
-def get_json(url: str, params: dict | None = None, retries: int = 8) -> dict | list:
-    """GET with a shared rate limit; retries on 429 / 5xx / network errors, other HTTP errors raise ApiError."""
+def get_json(url: str, params: dict | None = None, retries: int = 8, gate: dict | None = None, body: object = None) -> dict | list:
+    """GET (or POST of a JSON `body`) with a shared rate limit; retries on 429 / 5xx / network errors, other HTTP errors raise ApiError."""
+    gate = gate or _gate
     full = url + ("?" + urllib.parse.urlencode(params) if params else "")
+    data = None if body is None else json.dumps(body).encode()
     last = None
     for attempt in range(retries):
-        _wait_turn()
+        _wait_turn(gate)
         try:
-            req = urllib.request.Request(full, headers={"Accept": "application/json", "User-Agent": "kalshi-btc15-research/1"})
+            headers = {"Accept": "application/json", "User-Agent": "kalshi-btc15-research/1"}
+            if data is not None:
+                headers["Content-Type"] = "application/json"
+            req = urllib.request.Request(full, data=data, headers=headers)
             with urllib.request.urlopen(req, timeout=30) as resp:
-                body = json.load(resp)
-            _adapt(False)
-            return body
+                out = json.load(resp)
+            _adapt(gate, False)
+            return out
         except urllib.error.HTTPError as e:
             if e.code != 429 and e.code < 500:
                 raise ApiError(f"HTTP {e.code} for {full}", e.code) from e
             last = e
-            _adapt(e.code == 429)
+            _adapt(gate, e.code == 429)
             retry_after = e.headers.get("Retry-After") if e.headers else None
             time.sleep(float(retry_after) if retry_after and retry_after.replace(".", "").isdigit() else min(30.0, 1.5 ** attempt))
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
