@@ -17,6 +17,7 @@ from pathlib import Path
 from . import api, spot as spot_mod
 from .data import build_samples
 from .report import render
+from .stack import HOLDOUT_EVERY, HOLDOUT_RANGE, day_ts, evaluate, in_dev, render_stack, sample_range
 from .strategies import Config
 
 
@@ -53,10 +54,9 @@ def probe() -> int:
     return 0
 
 
-def backtest(args) -> int:
-    now = int(time.time())
-    since = now - args.days * 86400
-    cfg = Config(contracts=args.contracts, edge_cents=args.edge)
+def config_from_series(args) -> Config:
+    """Order size and the fee multiplier read from the series object (override with --fee-multiplier)."""
+    cfg = Config(contracts=args.contracts, edge_cents=getattr(args, "edge", 3.0))
     try:
         info = api.series_info()
         say(f"series: {info.get('title')} fee_type={info.get('fee_type')} fee_multiplier={info.get('fee_multiplier')}")
@@ -66,8 +66,13 @@ def backtest(args) -> int:
             say(f"WARNING: fee_type {info.get('fee_type')!r} is not the quadratic schedule this backtest models")
     except api.ApiError as e:
         say(f"could not read series info ({e}); assuming the standard fee")
-    if args.fee_multiplier is not None:
-        cfg = replace(cfg, fee_multiplier=args.fee_multiplier)
+    return replace(cfg, fee_multiplier=args.fee_multiplier) if args.fee_multiplier is not None else cfg
+
+
+def backtest(args) -> int:
+    now = int(time.time())
+    since = now - args.days * 86400
+    cfg = config_from_series(args)
 
     say("listing settled markets ...")
     markets = [m for m in api.settled_markets(refresh=args.refresh) if since <= m.close_ts <= now - 1200]
@@ -115,19 +120,41 @@ def backtest(args) -> int:
     return 0
 
 
-def day_ts(text: str) -> int:
-    return int(datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
-
-
 def fetch(args) -> int:
     """Download candles for every Nth settled market in [from, to): a deterministic sample that looks at no prices."""
     lo, hi = day_ts(args.start), day_ts(args.end)
     in_range = [m for m in api.settled_markets() if lo <= m.close_ts < hi]
-    picked = in_range[::args.every]
+    picked = sample_range(in_range, lo, hi, args.every)
     todo = sum(not api._candle_path(m.ticker).exists() for m in picked)
     say(f"{len(in_range)} settled markets in [{args.start}, {args.end}); every {args.every}th = {len(picked)}; {todo} still to download")
     api.prefetch_candles(api.SERIES, picked, progress=lambda i, n, bad: say(f"  candles {i}/{n} (failed {bad})"))
     say("done")
+    return 0
+
+
+def stack_cmd(args) -> int:
+    """Fit the v2 model on DEV; with --score-holdout also score the sampled HOLDOUT (pre-registered: once)."""
+    cfg = config_from_series(args)
+    all_markets = api.settled_markets()
+    have = lambda m: api._candle_path(m.ticker).exists()
+    dev_markets = [m for m in all_markets if in_dev(m.close_ts) and have(m)]
+    sampled = sample_range(all_markets, *HOLDOUT_RANGE, HOLDOUT_EVERY)
+    hold_markets = [m for m in sampled if have(m)] if args.score_holdout else []
+    say(f"DEV {len(dev_markets)} markets; HOLDOUT sample {len(sampled)}, downloaded {sum(map(have, sampled))}, "
+        f"{'SCORING' if args.score_holdout else 'NOT scoring (pass --score-holdout)'}")
+    say("downloading BTC-USD minutes from Coinbase (cached) ...")
+    spot = spot_mod.SpotSeries.fetch_chunks(spot_mod.needed_chunks(m.close_ts for m in dev_markets + hold_markets),
+                                            progress=lambda i, n: say(f"  spot chunks {i}/{n}"))
+    load = lambda m: api.candles(api.SERIES, m)
+    dev, _ = build_samples(dev_markets, load, spot)
+    hold, _ = build_samples(hold_markets, load, spot)
+    result = evaluate(dev, hold, cfg)
+    report = render_stack(result, dev, hold, cfg, {"holdout_sampled": len(sampled), "holdout_downloaded": len(hold_markets)})
+    out = Path(args.out) if args.out else Path(__file__).with_name("reports") / f"stack_{'holdout' if args.score_holdout else 'dev'}_{datetime.now(timezone.utc):%Y%m%d}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report)
+    print(report)
+    say(f"written to {out}")
     return 0
 
 
@@ -139,6 +166,11 @@ def main(argv: list[str] | None = None) -> int:
     fe.add_argument("--start", default="2026-01-04", help="first close date, UTC (default 2026-01-04)")
     fe.add_argument("--end", default="2026-08-21", help="close date it stops before, UTC (default 2026-08-21)")
     fe.add_argument("--every", type=int, default=4, help="take every Nth market by close time (default 4)")
+    st = sub.add_parser("stack", help="fit the v2 stacked model on DEV; --score-holdout scores the fresh holdout (once)")
+    st.add_argument("--score-holdout", action="store_true", help="include the sampled holdout; the pre-registration allows this once")
+    st.add_argument("--contracts", type=int, default=10)
+    st.add_argument("--fee-multiplier", type=float, default=None)
+    st.add_argument("--out")
     bt = sub.add_parser("backtest", help="download data and write the report")
     bt.add_argument("--days", type=int, default=400, help="how far back to go (default 400: the whole history, which starts 2025-12-10)")
     bt.add_argument("--leads", type=lambda t: [int(x) for x in t.split(",")], default=[120, 180, 240, 300],
@@ -151,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--refresh", action="store_true", help="re-list markets instead of using the cached list")
     bt.add_argument("--out", help="report path (default kalshi_btc15/reports/report_<date>.md)")
     args = ap.parse_args(argv)
-    return {"probe": lambda a: probe(), "fetch": fetch, "backtest": backtest}[args.cmd](args)
+    return {"probe": lambda a: probe(), "fetch": fetch, "stack": stack_cmd, "backtest": backtest}[args.cmd](args)
 
 
 if __name__ == "__main__":

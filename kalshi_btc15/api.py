@@ -30,7 +30,7 @@ class ApiError(RuntimeError):
         self.code = code
 
 
-MIN_INTERVAL = 0.12  # seconds between requests, shared by all threads; roughly 8 requests a second
+MIN_INTERVAL = 0.22  # seconds between requests, shared by all threads; about 4.5 a second, the measured sustainable rate
 _gate = {"lock": threading.Lock(), "next": 0.0, "interval": MIN_INTERVAL}
 
 
@@ -44,9 +44,9 @@ def _wait_turn() -> None:
 
 
 def _adapt(rate_limited: bool) -> None:
-    """Halve the request rate (down to one every 2 s) after a 429; creep back towards MIN_INTERVAL on success."""
+    """Slow down by half (to at most one request every 1.5 s) after a 429; speed back up towards MIN_INTERVAL on success."""
     with _gate["lock"]:
-        _gate["interval"] = min(2.0, _gate["interval"] * 2) if rate_limited else max(MIN_INTERVAL, _gate["interval"] * 0.97)
+        _gate["interval"] = min(1.5, _gate["interval"] * 1.5) if rate_limited else max(MIN_INTERVAL, _gate["interval"] * 0.9)
 
 
 def get_json(url: str, params: dict | None = None, retries: int = 8) -> dict | list:
@@ -177,18 +177,31 @@ def settled_markets(series: str = SERIES, max_pages: int = 80, refresh: bool = F
     return sorted(markets, key=lambda m: m.close_ts)
 
 
+_cutoff: list[int] = []
+
+
 def candles(series: str, market: Market, window_s: int = 900, period_min: int = 1) -> list[Candle]:
-    """1-minute candles covering the whole 15-minute window of one market (cached)."""
+    """1-minute candles covering the whole 15-minute window of one market (cached).
+
+    Markets settled before the historical cutoff are only served by /historical/..., the live path answers 404 for
+    them, so each path is tried first where it is expected to work and the other is the fallback.
+    """
     path = CACHE / "candles" / f"{market.ticker}.json"
     raw = read_cache(path)
     if raw is None:
+        if not _cutoff:
+            _cutoff.append(historical_cutoff())
         params = {"start_ts": market.close_ts - window_s - 60, "end_ts": market.close_ts + 60, "period_interval": period_min}
-        try:
-            body = get_json(f"{BASE}/series/{series}/markets/{market.ticker}/candlesticks", params)
-        except ApiError as e:
-            if e.code not in (400, 404):
-                raise
-            body = get_json(f"{BASE}/historical/markets/{market.ticker}/candlesticks", params)
+        urls = [f"{BASE}/series/{series}/markets/{market.ticker}/candlesticks", f"{BASE}/historical/markets/{market.ticker}/candlesticks"]
+        if market.close_ts < _cutoff[0]:
+            urls.reverse()
+        for i, url in enumerate(urls):
+            try:
+                body = get_json(url, params)
+                break
+            except ApiError as e:
+                if e.code not in (400, 404) or i == len(urls) - 1:
+                    raise
         raw = body.get("candlesticks", [])
         write_cache(path, raw)
     return [parse_candle(c) for c in raw]

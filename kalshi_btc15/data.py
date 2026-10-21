@@ -33,6 +33,7 @@ class Sample:
     spot_entry: float | None
     spot_end: float | None
     sigma: float | None          # per-minute log-return std over the VOL_MIN minutes before entry
+    last: float | None = None    # last traded YES price in the entry minute, cents
 
     @property
     def mid(self) -> float:
@@ -73,6 +74,6 @@ def build_samples(markets: list[Market], load_candles: Callable[[Market], list[C
         out.append(Sample(
             m.ticker, m.close_ts, m.yes_won, now.bid, now.ask,
             before.bid if before else None, before.ask if before else None,
-            (m.close_ts - entry_ts) / 60.0, m.strike, *spot_vals,
+            (m.close_ts - entry_ts) / 60.0, m.strike, *spot_vals, last=now.last,
         ))
     return out, skipped
