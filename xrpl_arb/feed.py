@@ -91,6 +91,10 @@ class LiveFeed:
         led = r["ledger"]
         return int(led["ledger_index"]), float(led["close_time"]) + RIPPLE_EPOCH
 
+    def ledger_time(self, index: int) -> float:
+        """Close time (unix seconds) of a past or present validated ledger."""
+        return float(self.rpc.call("ledger", ledger_index=index)["ledger"]["close_time"]) + RIPPLE_EPOCH
+
     def _transfer_rates(self) -> dict[str, float]:
         if time.time() - self._rates_at < 600 and self._rates:
             return self._rates

@@ -8,8 +8,9 @@ Scans the XRP Ledger's order books and AMM pools every ledger, finds cycles that
 python -m xrpl_arb                    # real mainnet data, paper trading, dashboard at http://127.0.0.1:8780
 python -m xrpl_arb --demo             # synthetic markets, for trying the dashboard offline (nothing real)
 python -m xrpl_arb.markets            # one-shot look at every pool and book, no dashboard
+python -m xrpl_arb.history --hours 72 # replay 3 days of real past ledgers through the bot (read-only)
 python -m xrpl_arb --ledgers 20 --no-browser    # headless: scan 20 ledgers, print a summary
-python -m unittest tests.test_xrpl_arb          # 75 tests, no network needed
+python -m unittest tests.test_xrpl_arb          # 82 tests, no network needed
 ```
 
 Python 3.10+, standard library only. Live trading additionally needs `pip install xrpl-py`.
@@ -57,6 +58,14 @@ Each leg is a partial payment from the wallet to itself with `DeliverMin` as the
 A paper trade opened at ledger N sends its first leg at N+1, its second at N+2, and so on, each priced from that later ledger's real books and pools. That includes the cost of being late and of the market moving between legs. The dashboard shows two P&L lines: **quoted at detection** (what you would have if every cycle filled at the price you saw) and **realized after legs**. The gap between them is the point.
 
 It is still not a promise: it assumes you are the only one acting on a given price in a given ledger. Other bots racing for the same gap will beat you to some of them.
+
+## Replaying history
+
+Waiting for the market to show a gap is slow, and XRPL servers with full history keep every past order book and pool. `python -m xrpl_arb.history --hours 72 --stride 150` reads a window of 5 consecutive past ledgers every 150 ledgers (about 10 minutes) and runs them through the same bot and paper executor, so a cycle seen at ledger N has its legs priced at N+1, N+2 and so on, as in live paper mode. It prints, per cycle, how often it was profitable, how often it cleared the thresholds, the edge distribution (median, 90th and 99th percentile, max), the largest single-ledger opportunities, and what paper trading would have made. `--out file.json` keeps the full report.
+
+Reading goes at about one ledger per second, so 72 hours at that stride takes roughly 40 minutes. `--stride 1 --window 40 --from-ledger N` reads every ledger of one interval, which is how to look closely at a volatile moment.
+
+What it cannot show: other bots racing for the same gap in the same ledger (a gap still there one ledger later was not taken in that ledger, but your transaction would also have had to be ordered ahead of theirs), and how long a real submission takes. It samples the market, so an opportunity that lasts only one or two ledgers can fall between windows: the percentiles say how often gaps occur, not that none were missed.
 
 ## The dashboard
 
@@ -110,4 +119,4 @@ What can still go wrong: the market moves between legs and an unwind sells at a 
 | `plan.py`, `executor.py`, `paper.py`, `live.py` | the trade policy, shared bookkeeping, paper and live execution |
 | `bot.py`, `state.py`, `config.py` | the per-ledger loop, dashboard state, validated settings |
 | `server.py`, `static/index.html` | local server and the dashboard (one file, no external requests) |
-| `markets.py` | `python -m xrpl_arb.markets` |
+| `markets.py`, `history.py` | `python -m xrpl_arb.markets`, `python -m xrpl_arb.history` |

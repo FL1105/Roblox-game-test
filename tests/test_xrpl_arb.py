@@ -508,6 +508,77 @@ class RpcFailover(unittest.TestCase):
             self.rpc_mod.Rpc((busy,)).call("ping")
 
 
+class History(unittest.TestCase):
+    def test_windows_fit_inside_the_range(self):
+        from xrpl_arb.history import plan_windows
+
+        starts = plan_windows(1000, 1100, 30, 5)
+        self.assertEqual(starts, [1000, 1030, 1060, 1090])
+        self.assertTrue(all(s + 4 <= 1100 for s in starts))
+        self.assertEqual(plan_windows(1000, 1003, 30, 5), [])
+
+    def test_percentile(self):
+        from xrpl_arb.history import pct
+
+        self.assertEqual(pct([5, 1, 3, 2, 4], 0.5), 3)
+        self.assertEqual(pct([5, 1, 3, 2, 4], 0.99), 5)
+        self.assertTrue(math.isnan(pct([], 0.5)))
+
+    def replay(self, feed_cls=DemoFeed, **kw):
+        from xrpl_arb.history import plan_windows, replay, summarize
+
+        cfg = Config()
+        feed = feed_cls(cfg, seed=11, interval=0)
+        starts = plan_windows(5000, 5000 + 400, 5, 5)
+        samples, state = replay(cfg, feed, starts, 5, workers=1, **kw)
+        return cfg, starts, samples, state, summarize
+
+    def test_every_trade_opened_in_a_window_finishes_in_it(self):
+        cfg, starts, samples, state, _ = self.replay()
+        st = state.stats
+        self.assertGreater(st["opened"], 0)  # the synthetic market has gaps, so there is something to trade
+        self.assertEqual(st["opened"], st["won"] + st["lost"] + st["missed"] + st["stuck"])
+        self.assertEqual(len(samples), len(starts) * 5 * 10)  # ten cycles priced at each of five ledgers in every window
+
+    def test_trades_only_open_early_enough_to_finish(self):
+        cfg, starts, samples, state, _ = self.replay()
+        opened_at = {int(t["ledger"]) for t in state.trades}
+        self.assertTrue(all((led - 5000) % 5 <= 5 - 1 - cfg.max_hops for led in opened_at))
+
+    def test_summary_shape(self):
+        cfg, starts, samples, state, summarize = self.replay()
+        rep = summarize(samples, state.stats, starts, 0.0, 1.0, 5, 5)
+        json.dumps(rep)
+        self.assertEqual(rep["windows"], len(starts))
+        self.assertEqual(len(rep["routes"]), 10)
+        p90 = [r["edge_bps_p90"] for r in rep["routes"]]
+        self.assertEqual(p90, sorted(p90, reverse=True))
+        for r in rep["routes"]:
+            self.assertTrue(0 <= r["share_executable"] <= r["share_profitable"] <= 1)
+        self.assertEqual(rep["paper"]["opened"], state.stats["opened"])
+
+    def test_windows_that_cannot_be_read_are_skipped_not_fatal(self):
+        class Flaky(DemoFeed):
+            def snapshot(self, ledger, close_time):
+                if (ledger - 5000) // 5 % 2 == 0:
+                    raise OSError("history unavailable")
+                return super().snapshot(ledger, close_time)
+
+        cfg, starts, samples, state, _ = self.replay(Flaky)
+        self.assertEqual(state.stats["windows_skipped"], len([s for s in starts if (s - 5000) // 5 % 2 == 0]))
+        self.assertEqual(len(samples), (len(starts) - state.stats["windows_skipped"]) * 5 * 10)
+
+    def test_cli_rejects_windows_too_short_for_the_longest_trade(self):
+        from xrpl_arb.history import main
+
+        with self.assertRaises(SystemExit) as cm:
+            main(["--window", "3"])
+        self.assertIn("--window", str(cm.exception))
+        with self.assertRaises(SystemExit) as cm:
+            main(["--markets", "XRPRLUSD"])
+        self.assertIn("--markets", str(cm.exception))
+
+
 class BotResilience(unittest.TestCase):
     def test_an_unexpected_error_is_reported_and_the_loop_keeps_going(self):
         import contextlib
