@@ -84,11 +84,17 @@ class BookState:
         self.pools: dict = {}
         self.books: dict = {}
         self.markets: dict = {}
+        self.changed_at: dict = {}  # pair -> ledger at which its pool or books last differed from the previous read
 
     def refresh(self, dirty: set[frozenset] | None, ledger):
         """Re-read the dirty pairs (all of them if `dirty` is None) at `ledger`; returns the Reads."""
         pairs = self.index.pairs if dirty is None else [p for p in self.index.pairs if frozenset(p) in dirty]
         reads = read_pairs(self.client, pairs, ledger, self.book_limit, self.workers, self.account)
+        for a, b in pairs:
+            key = frozenset((a, b))
+            if (key not in self.pools or self.pools[key] != reads.pools[key]
+                    or any(self.books.get(e) != reads.books[e] for e in ((a, b), (b, a)))):
+                self.changed_at[key] = ledger
         self.pools.update(reads.pools)
         self.books.update(reads.books)
         self.index.learn_accounts(reads.pools)
@@ -127,8 +133,11 @@ def _default_connect(url: str):
 
 
 def watch(client: XrplClient, pairs: list[tuple[Asset, Asset]], settings, *, connect=_default_connect,
-          clock=time.monotonic, wall=time.time, log=print, sink=None) -> int:
-    """Run until `settings.minutes` / `settings.max_ledgers` is reached (0 = forever) or interrupted."""
+          clock=time.monotonic, wall=time.time, log=print, sink=None, observer=None) -> int:
+    """Run until `settings.minutes` / `settings.max_ledgers` is reached (0 = forever) or interrupted.
+
+    `observer(event: dict)` is called for each processed ledger (kind "ledger") and for connection changes (kind
+    "status"), so a dashboard can follow along without parsing log lines."""
     try:
         from websockets.exceptions import WebSocketException
     except ImportError:  # only the injected test connection is usable without the library
@@ -143,6 +152,10 @@ def watch(client: XrplClient, pairs: list[tuple[Asset, Asset]], settings, *, con
     max_xrp, tx_cost = Decimal(str(settings.max_xrp)), Decimal(str(settings.tx_cost))
     started, processed, since_full, attempt = clock(), 0, 0, 0
     urls = list(settings.ws)
+
+    def emit(kind: str, **data) -> None:
+        if observer:
+            observer({"kind": kind, **data})
 
     def write(rows):
         if sink:
@@ -180,9 +193,13 @@ def watch(client: XrplClient, pairs: list[tuple[Asset, Asset]], settings, *, con
                 "after_close_s": round(total, 3),
                 "candidates": len(cands), "opportunities": len(opps), "skipped": len(reads.skipped),
                 "consistent": reads.consistent,
+                "best_gross_xrp": float(cands[0].profit + cands[0].tx_cost) if cands else None,
                 "best_candidate": cands[0].to_json() if cands and not opps else None}]
               + [{"type": "opp", "t": t, "ledger": ledger, **o.to_json()} for o in new]
               + [{"type": "end", "t": t, **e} for e in ended])
+        emit("ledger", ledger=ledger, t=t, full=full, pairs_read=n_pairs, reads=reads,
+             read_s=read_done - began, eval_s=eval_done - read_done, after_close_s=total,
+             candidates=cands, opportunities=opps, new=new, ended=ended, state=state)
 
     try:
         while not done():
@@ -191,6 +208,7 @@ def watch(client: XrplClient, pairs: list[tuple[Asset, Asset]], settings, *, con
                 with connect(url) as ws:
                     ws.send(json.dumps({"command": "subscribe", "streams": ["ledger", "transactions"]}))
                     log(f"connected to {url}")
+                    emit("status", state="connected", detail=url)
                     attempt = 0
                     first, dirty, pending = True, set(), None  # pending: (ledger, closed_at, deadline)
                     while not done():
@@ -216,6 +234,7 @@ def watch(client: XrplClient, pairs: list[tuple[Asset, Asset]], settings, *, con
             except (OSError, ConnectionError, WebSocketException, json.JSONDecodeError) as e:
                 attempt += 1
                 log(f"stream error ({type(e).__name__}: {e}); reconnecting")
+                emit("status", state="reconnecting", detail=f"{type(e).__name__}: {e}")
                 time.sleep(min(2 ** attempt, 20))
     except KeyboardInterrupt:
         return 0

@@ -166,5 +166,6 @@ lab.bwif.meme, which turned out to be a dashboard for someone else's bot (the st
 Details, what was verified against mainnet and what was not: [`xrpl_arb/README.md`](xrpl_arb/README.md).
 
 ```
-python -m xrpl_arb scan --config xrpl_arb/markets.example.json
+python -m xrpl_arb scan --config xrpl_arb/markets.example.json     # one scan
+python -m xrpl_arb ui --config pairs.json                          # live dashboard at http://127.0.0.1:8765
 ```

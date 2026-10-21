@@ -4,10 +4,15 @@ Finds `XRP -> token -> ... -> XRP` cycles across the XRP Ledger's order books an
 would return after fees. **Read-only: it holds no key and builds no transaction.** Standard library only.
 
 ```
-python -m unittest tests.test_xrpl_arb                                      # 53 tests, no network
+python -m unittest tests.test_xrpl_arb tests.test_xrpl_ui                    # 87 tests, no network
 python -m xrpl_arb scan --config xrpl_arb/markets.example.json              # one scan
-python -m xrpl_arb scan --config pairs.json --loop 10 --out data/xrpl.jsonl # every 10 s, recorded
+python -m xrpl_arb scan --config pairs.json --loop 10 --out data/xrpl.jsonl # poll every 10 s, recorded
+python -m xrpl_arb watch --config pairs.json --out data/xrpl_watch.jsonl    # react to every ledger close
+python -m xrpl_arb ui --config pairs.json                                   # the same, with a dashboard
+python -m xrpl_arb ui --config pairs.json --replay data/xrpl_watch.jsonl    # look at a recording
 ```
+
+`watch` and `ui` need `pip install websockets` (the only dependency, same as the rest of the repo's live tools).
 
 ## What lab.bwif.meme is (and isn't)
 
@@ -85,11 +90,36 @@ Two runs, 29 scans over about 230 ledgers (roughly 13 minutes). Treat it as a sm
 - That is the same size of prize the lab.bwif.meme feed reports (median 0.0046 XRP per cycle), which is why polling at
   this speed is the wrong tool for capturing it.
 
+## Watching ledger by ledger (`watch`, `ui`)
+
+`scan` polls: a 98-pair sweep takes about 45 s, which is 12 ledgers. `watch` subscribes to the `ledger` and
+`transactions` streams over a websocket instead. It maps each validated transaction's metadata to the configured
+pairs it touched (an `Offer` node names its two assets; a swap moves the AMM account's `AccountRoot` or
+`RippleState`), re-reads only those pairs pinned to the ledger that just closed, re-evaluates every cycle, and follows
+each opportunity until it disappears, so its lifetime is measured in ledgers. A dropped connection reconnects, and
+every pair is re-read on connect and every `--full-every` ledgers as a safety net.
+
+- **Which pairs changed is checked, not assumed.** Over four consecutive mainnet ledgers I compared every pool and book at
+  ledger N-1 and N: all 9 pairs that really changed were flagged, none missed, none flagged for nothing. Small sample.
+- Transactions of older ledgers can arrive after a newer ledger's close message, and `Batch` parents carry only their
+  own three metadata nodes (the inner swaps arrive as separate messages). So the stream only decides which pairs to
+  re-read; the state itself is always read from the ledger.
+- **Measured** (one run, 100 ledgers, 98 pairs, 8 minutes): median 3 pairs re-read per ledger (max 27); a ledger was
+  evaluated a median of 1.42 s after its close message arrived (90% within 2.1 s, worst 6.0 s), against 45 s polling.
+  In that run 3 ledgers had an opportunity that cleared the thresholds, all in one burst at ledger 107799078: 5
+  overlapping cycles through ARMY, POLICE, FUZZY and gei, up to +0.032 XRP (0.59%) on 5.4 XRP. They stayed open 1, 1, 1,
+  3 and 3 ledgers. A sample of one burst says little about how often this happens.
+
+`ui` runs the same watcher with a dashboard on `http://127.0.0.1:8765` (read-only, loopback only): the best cycle in each
+ledger on a log scale against the fee and the bar to clear, live and ended opportunities with their legs and lifetimes,
+how fast each ledger was handled, and a table of every market. The page makes no outside requests and shows chain data
+(token names are chosen by whoever issues them) only as text; a browser test feeds it a hostile name to check.
+
 ## Limits you should know about
 
-- **It polls.** A 98-pair sweep takes about 45 s (about 12 ledgers). A bot that sees each ledger as it closes (a
-  websocket `subscribe` and incremental updates) will win any opportunity this finds. Fine for measuring whether an
-  edge exists, not for capturing one.
+- **Detecting is not capturing.** `watch` sees a ledger about 1.4 s after it closes, but this package cannot submit, and
+  a competitor who submits into the next ledger needs the same window. The opportunities seen lasted 1 to 3 ledgers.
+  `scan` is slower still (45 s) and only suits measuring whether an edge exists.
 - **Fee asymmetry.** In the DROP and PHNIX pools one operator holds the live auction slot (with four authorized
   accounts) and pays a tenth of the trading fee; anyone else starts 0.35% behind on those pools.
 - **Dust.** The site's own numbers are hundredths of an XRP per cycle; one failed batch costs the fee of dozens of wins.
@@ -97,7 +127,8 @@ Two runs, 29 scans over about 230 ledgers (roughly 13 minutes). Treat it as a sm
 
 ## Not built: execution
 
-There is deliberately no code that signs or submits. The honest next steps, in order: (1) record opportunities for a
-few days and count how long each one lives (`--out`), (2) decide dry-run only versus a funded wallet with a hard loss
-cap, (3) build the submit path as one atomic `Batch` (all-or-nothing) and test it on the XRPL testnet first. None of
-that should start before step 1 shows opportunities that persist longer than your latency.
+There is deliberately no code that signs or submits. The honest next steps, in order: (1) record `watch` for days and
+count how many opportunities appear and how long each lives, which tells you whether a 1.4 s reaction is ever fast enough,
+(2) decide dry-run only versus a funded wallet with a hard loss cap, (3) build the submit path as one atomic `Batch`
+(all-or-nothing) and test it on the XRPL testnet first. None of that should start before step 1 shows opportunities that
+persist longer than your latency. The XRPL testnet and its faucet were not reachable from the sandbox this was built in.

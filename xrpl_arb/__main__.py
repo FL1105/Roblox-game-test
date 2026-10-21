@@ -2,6 +2,7 @@
     python -m xrpl_arb scan --config xrpl_arb/markets.example.json            # one scan
     python -m xrpl_arb scan --config FILE --loop 15 --out data/xrpl_opps.jsonl  # every 15 s, recorded
     python -m xrpl_arb watch --config FILE --out data/xrpl_watch.jsonl          # every ledger close, via websocket
+    python -m xrpl_arb ui --config FILE                                         # the same, with a dashboard in your browser
 
 Read-only: asks public rippled servers for order books and AMM pools and reports XRP -> ... -> XRP
 cycles that would return more than they cost. It never signs or submits anything.
@@ -12,7 +13,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
 import time
+import webbrowser
 from decimal import Decimal
 from itertools import combinations
 from pathlib import Path
@@ -22,6 +25,7 @@ from .cycles import Opportunity, candidates, closest, passes
 from .model import XRP, Asset, is_valid_address
 from .snapshot import RateCache, take_snapshot
 from .stream import DEFAULT_WS, watch
+from .ui import DashboardState, serve
 
 
 def load_config(path: str) -> tuple[list[Asset], list[tuple[Asset, Asset]] | None]:
@@ -107,6 +111,42 @@ def open_sink(path: str | None):
     return open(path, "a")
 
 
+def ui_settings(args) -> dict:
+    return {"min_profit": args.min_profit, "min_profit_pct": args.min_profit_pct, "tx_cost": args.tx_cost,
+            "max_legs": args.max_legs, "max_xrp": args.max_xrp, "account": args.account}
+
+
+def run_ui(args, config, client, sink, connect) -> int:
+    assets, pairs = config
+    if pairs is None:
+        pairs = list(combinations([XRP] + [a for a in assets if not a.is_xrp], 2))
+    if args.replay:
+        with open(args.replay) as f:
+            dashboard = DashboardState.from_rows([json.loads(line) for line in f], ui_settings(args))
+    else:
+        dashboard = DashboardState(ui_settings(args))
+    url = f"http://127.0.0.1:{args.port}"
+
+    def ready(server):
+        print(f"dashboard at {url}  (Ctrl-C to stop)", flush=True)
+        if not args.no_browser:
+            webbrowser.open(url)
+
+    if not args.replay:
+        def run_watch():
+            try:
+                watch(client, pairs, args, sink=sink, observer=dashboard.observe, log=lambda line: print(line, flush=True),
+                      **({"connect": connect} if connect else {}))
+            finally:
+                dashboard.observe({"kind": "status", "state": "stopped", "detail": "watcher finished"})
+        threading.Thread(target=run_watch, daemon=True).start()
+    try:
+        serve(dashboard, args.port, ready)
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
 def main(argv=None, client: XrplClient | None = None, connect=None) -> int:
     p = argparse.ArgumentParser(prog="python -m xrpl_arb", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -121,6 +161,16 @@ def main(argv=None, client: XrplClient | None = None, connect=None) -> int:
     w.add_argument("--full-every", type=int, default=20, help="re-read every pair this often, as a safety net")
     w.add_argument("--minutes", type=float, default=0, help="stop after this long (default: run until interrupted)")
     w.add_argument("--max-ledgers", type=int, default=0, help="stop after this many ledgers (default: no limit)")
+    u = sub.add_parser("ui", help="watch, with a live dashboard on http://127.0.0.1:PORT (read-only)")
+    add_common(u)
+    u.add_argument("--ws", nargs="+", default=list(DEFAULT_WS), help="rippled websocket URLs, tried in turn")
+    u.add_argument("--settle", type=float, default=0.35)
+    u.add_argument("--full-every", type=int, default=20)
+    u.add_argument("--minutes", type=float, default=0, help="stop watching after this long; the page stays up")
+    u.add_argument("--max-ledgers", type=int, default=0)
+    u.add_argument("--port", type=int, default=8765)
+    u.add_argument("--no-browser", action="store_true", help="don't open the page automatically")
+    u.add_argument("--replay", metavar="JSONL", help="show a recorded watch run (its --out file) instead of watching")
     args = p.parse_args(argv)
     if args.account and not is_valid_address(args.account):
         p.error(f"--account {args.account!r} is not a valid XRPL address")
@@ -129,6 +179,8 @@ def main(argv=None, client: XrplClient | None = None, connect=None) -> int:
     client = client or XrplClient(args.rpc)
     sink = open_sink(args.out)
     try:
+        if args.cmd == "ui":
+            return run_ui(args, config, client, sink, connect)
         if args.cmd == "watch":
             assets, pairs = config
             if pairs is None:
