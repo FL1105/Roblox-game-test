@@ -4,6 +4,7 @@ import json
 import os
 import random
 import tempfile
+import types
 import unittest
 from decimal import Decimal as D
 from unittest import mock
@@ -14,6 +15,7 @@ from xrpl_arb.cycles import best_size, closest, find_cycles, run_cycle, scan
 from xrpl_arb.liquidity import Market, Offer, Pool, _amm_in_to_price
 from xrpl_arb.model import XRP, Asset, amount_value, floor_drop, is_valid_address
 from xrpl_arb.snapshot import RateCache, parse_offers, parse_pool, take_snapshot
+from xrpl_arb.stream import Lifetimes, PairIndex, watch
 
 BITSTAMP = "rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B"
 GATEHUB = "rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq"
@@ -603,6 +605,202 @@ class Cli(unittest.TestCase):
             code = main(["scan", "--config", self.cfg], client=ledger)
         self.assertEqual(code, 1)
         self.assertIn("scan failed", err.getvalue())
+
+
+AMM_ACCT = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+
+
+def node(kind, entry, **fields):
+    key = {"Created": "CreatedNode", "Modified": "ModifiedNode", "Deleted": "DeletedNode"}[kind]
+    return {key: {"LedgerEntryType": entry, "NewFields" if kind == "Created" else "FinalFields": fields}}
+
+
+def tx_msg(*nodes, ledger=100, validated=True):
+    return json.dumps({"type": "transaction", "validated": validated, "ledger_index": ledger,
+                       "meta": {"AffectedNodes": list(nodes)}})
+
+
+def close_msg(n):
+    return json.dumps({"type": "ledgerClosed", "ledger_index": n, "ledger_time": 1})
+
+
+class StreamMapping(unittest.TestCase):
+    def setUp(self):
+        self.index = PairIndex([(XRP, USD), (USD, EUR), (EUR, USD)])  # the last two are one pair
+        self.index.learn_accounts({frozenset((XRP, USD)): Pool(XRP, USD, D(1), D(1), D(0), AMM_ACCT)})
+
+    def test_pairs_are_deduplicated(self):
+        self.assertEqual(len(self.index.pairs), 2)
+
+    def test_offer_nodes_name_their_two_assets_in_either_order(self):
+        usd, eur = iou(USD, 5), iou(EUR, 5)
+        for kind in ("Created", "Modified", "Deleted"):
+            msg = json.loads(tx_msg(node(kind, "Offer", TakerGets=usd, TakerPays=eur)))
+            self.assertEqual(self.index.touched(msg), {frozenset((USD, EUR))}, kind)
+        msg = json.loads(tx_msg(node("Modified", "Offer", TakerGets=eur, TakerPays=usd)))
+        self.assertEqual(self.index.touched(msg), {frozenset((USD, EUR))})
+        msg = json.loads(tx_msg(node("Modified", "Offer", TakerGets=iou(USD, 1), TakerPays="1000000")))
+        self.assertEqual(self.index.touched(msg), {frozenset((XRP, USD))})
+
+    def test_an_offer_for_an_unconfigured_pair_is_ignored(self):
+        other = Asset("GBP", BITSTAMP)
+        msg = json.loads(tx_msg(node("Modified", "Offer", TakerGets=iou(other, 1), TakerPays="1000000")))
+        self.assertEqual(self.index.touched(msg), set())
+
+    def test_a_swap_shows_up_as_the_amm_accounts_balances_changing(self):
+        xrp_side = json.loads(tx_msg(node("Modified", "AccountRoot", Account=AMM_ACCT, Balance="5")))
+        iou_side = json.loads(tx_msg(node("Modified", "RippleState", HighLimit={"issuer": BITSTAMP, "value": "0"},
+                                          LowLimit={"issuer": AMM_ACCT, "value": "0"})))
+        for msg in (xrp_side, iou_side):
+            self.assertEqual(self.index.touched(msg), {frozenset((XRP, USD))})
+
+    def test_unrelated_and_empty_metadata(self):
+        other_acct = json.loads(tx_msg(node("Modified", "AccountRoot", Account=BITSTAMP),
+                                       node("Modified", "DirectoryNode", Owner=AMM_ACCT)))
+        self.assertEqual(self.index.touched(other_acct), set())
+        self.assertEqual(self.index.touched({}), set())
+        self.assertEqual(self.index.touched({"meta": {}}), set())
+
+    def test_currency_case_in_the_metadata_does_not_matter(self):
+        solo = Asset("534F4C4F00000000000000000000000000000000", "rsoLo2S1kiGeCcn6hCUXVrCpGMWLrRrLZz")
+        index = PairIndex([(XRP, solo)])
+        lower = {"currency": solo.currency.lower(), "issuer": solo.issuer, "value": "1"}
+        msg = json.loads(tx_msg(node("Modified", "Offer", TakerGets=lower, TakerPays="1000000")))
+        self.assertEqual(index.touched(msg), {frozenset((XRP, solo))})
+
+
+class OpportunityLifetimes(unittest.TestCase):
+    def opp(self, profit):
+        return scan(triangle(xrp_per_eur=str(D("2.5") + D(profit))), **SCAN)[0]
+
+    def test_new_then_alive_then_ended(self):
+        t = Lifetimes()
+        a, b = self.opp("0"), self.opp("0.1")
+        new, ended = t.update(10, [a])
+        self.assertEqual((len(new), ended), (1, []))
+        new, ended = t.update(11, [b])  # same path, better profit: not new
+        self.assertEqual((new, ended), ([], []))
+        new, ended = t.update(12, [])
+        self.assertEqual(new, [])
+        self.assertEqual((ended[0]["first_ledger"], ended[0]["last_ledger"], ended[0]["ledgers_alive"]), (10, 11, 2))
+        self.assertEqual(D(ended[0]["best_profit"]), b.profit)  # remembers the best moment
+        self.assertEqual(t.update(13, []), ([], []))  # and forgets it once reported
+
+
+class FakeWS:
+    """A scripted websocket: strings are messages, callables run when reached (to change the fake ledger)."""
+
+    def __init__(self, script):
+        self.script, self.sent = list(script), []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def send(self, data):
+        self.sent.append(json.loads(data))
+
+    def recv(self, timeout=None):
+        while self.script:
+            item = self.script.pop(0)
+            if callable(item):
+                item()
+                continue
+            return item
+        raise TimeoutError
+
+
+def settings(**kw):
+    base = dict(book_limit=60, workers=2, account=None, min_profit=0.001, min_profit_pct=0.25, max_xrp=1000,
+                tx_cost=0.00002, max_legs=4, settle=0.0, full_every=1000, minutes=0, max_ledgers=0, ws=["wss://fake/"])
+    base.update(kw)
+    return types.SimpleNamespace(**base)
+
+
+class Watching(unittest.TestCase):
+    def setUp(self):
+        self.ledger = FakeLedger(books={(XRP, USD): [(100, 50)], (USD, EUR): [(50, 45)], (EUR, XRP): [(45, 90)]})
+        self.pairs = [(XRP, USD), (USD, EUR), (EUR, XRP)]
+        self.lines, self.rows = [], []
+        sink = types.SimpleNamespace(write=lambda text: self.rows.extend(json.loads(l) for l in text.splitlines()),
+                                     flush=lambda: None)
+        self.sink = sink
+        self.eur_xrp = lambda payout: (lambda: self.ledger.books.__setitem__((EUR, XRP), [(45, payout)]))
+
+    def run_watch(self, script, **kw):
+        ws = FakeWS(script)
+        code = watch(self.ledger, self.pairs, settings(**kw), connect=lambda url: ws, log=self.lines.append, sink=self.sink)
+        return code, ws
+
+    def ledger_rows(self):
+        return [r for r in self.rows if r["type"] == "ledger"]
+
+    def test_follows_an_opportunity_from_appearance_to_disappearance(self):
+        offer_changed = tx_msg(node("Modified", "Offer", TakerGets=iou(EUR, 45), TakerPays="90000000"))
+        code, ws = self.run_watch([
+            close_msg(100),                                   # first ledger: everything is read
+            self.eur_xrp(112.5), offer_changed, close_msg(101),  # EUR->XRP now pays 2.5: the triangle opens
+            close_msg(102),                                   # nothing changed: still open, nothing re-read
+            self.eur_xrp(90), offer_changed, close_msg(103),  # back to 2.0: it closes
+        ], max_ledgers=4)
+        self.assertEqual(code, 0)
+        self.assertEqual(ws.sent[0], {"command": "subscribe", "streams": ["ledger", "transactions"]})
+        rows = self.ledger_rows()
+        self.assertEqual([(r["ledger"], r["full"], r["pairs_read"], r["opportunities"]) for r in rows],
+                         [(100, True, 3, 0), (101, False, 1, 1), (102, False, 0, 1), (103, False, 1, 0)])
+        opps = [r for r in self.rows if r["type"] == "opp"]
+        self.assertEqual([r["ledger"] for r in opps], [101])  # recorded once, on first sighting
+        end = next(r for r in self.rows if r["type"] == "end")
+        self.assertEqual((end["first_ledger"], end["last_ledger"], end["ledgers_alive"]), (101, 102, 2))
+        self.assertTrue(any("NEW" in l for l in self.lines) and any("ended after 2 ledger" in l for l in self.lines))
+
+    def test_only_validated_transactions_count(self):
+        offer_changed = tx_msg(node("Modified", "Offer", TakerGets=iou(EUR, 45), TakerPays="90000000"), validated=False)
+        self.run_watch([close_msg(100), self.eur_xrp(112.5), offer_changed, close_msg(101)], max_ledgers=2)
+        self.assertEqual([r["pairs_read"] for r in self.ledger_rows()], [3, 0])
+
+    def test_everything_is_re_read_every_full_every_ledgers(self):
+        self.run_watch([close_msg(100 + i) for i in range(5)], max_ledgers=5, full_every=2)
+        self.assertEqual([r["full"] for r in self.ledger_rows()], [True, False, False, True, False])
+
+    def test_reads_are_pinned_to_the_closed_ledger(self):
+        self.run_watch([close_msg(555)], max_ledgers=1)
+        self.assertEqual({c[-1] for c in self.ledger.calls}, {555})
+
+    def test_a_dropped_connection_reconnects_and_reads_everything_again(self):
+        conns = [OSError("down"), FakeWS([close_msg(100)]), FakeWS([close_msg(101)])]
+        used = []
+
+        def connect(url):
+            c = conns.pop(0)
+            if isinstance(c, Exception):
+                raise c
+            used.append(c)
+            return c
+
+        with mock.patch("xrpl_arb.stream.time.sleep"):
+            watch(self.ledger, self.pairs, settings(max_ledgers=2), connect=connect, log=self.lines.append, sink=self.sink)
+        self.assertEqual(len(used), 2)
+        self.assertEqual([r["full"] for r in self.ledger_rows()], [True, True])  # fresh connection: full read each time
+        self.assertTrue(any("stream error" in l for l in self.lines))
+
+    def test_cli_watch_writes_the_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg, log = os.path.join(tmp, "m.json"), os.path.join(tmp, "w.jsonl")
+            with open(cfg, "w") as f:
+                json.dump({"pairs": [["XRP", str(USD)], [str(USD), str(EUR)], [str(EUR), "XRP"]]}, f)
+            ws = FakeWS([close_msg(100), close_msg(101)])
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = main(["watch", "--config", cfg, "--out", log, "--settle", "0", "--max-ledgers", "2"],
+                            client=self.ledger, connect=lambda url: ws)
+            self.assertEqual(code, 0)
+            with open(log) as f:
+                rows = [json.loads(l) for l in f]
+        self.assertEqual([r["ledger"] for r in rows if r["type"] == "ledger"], [100, 101])
+        self.assertIn("connected to wss://xrplcluster.com/", out.getvalue())
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 """Usage:
     python -m xrpl_arb scan --config xrpl_arb/markets.example.json            # one scan
     python -m xrpl_arb scan --config FILE --loop 15 --out data/xrpl_opps.jsonl  # every 15 s, recorded
+    python -m xrpl_arb watch --config FILE --out data/xrpl_watch.jsonl          # every ledger close, via websocket
 
 Read-only: asks public rippled servers for order books and AMM pools and reports XRP -> ... -> XRP
 cycles that would return more than they cost. It never signs or submits anything.
@@ -13,12 +14,14 @@ import json
 import sys
 import time
 from decimal import Decimal
+from itertools import combinations
 from pathlib import Path
 
 from .client import DEFAULT_URLS, XrplClient, XrplError
 from .cycles import Opportunity, candidates, closest, passes
-from .model import Asset, is_valid_address
+from .model import XRP, Asset, is_valid_address
 from .snapshot import RateCache, take_snapshot
+from .stream import DEFAULT_WS, watch
 
 
 def load_config(path: str) -> tuple[list[Asset], list[tuple[Asset, Asset]] | None]:
@@ -78,14 +81,10 @@ def one_scan(client: XrplClient, config, rates: RateCache, args, sink) -> list[O
     return opps
 
 
-def main(argv=None, client: XrplClient | None = None) -> int:
-    p = argparse.ArgumentParser(prog="python -m xrpl_arb", description=__doc__.split("\n\n")[0])
-    sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("scan", help="look for cycle arbitrage (read-only)")
+def add_common(s: argparse.ArgumentParser) -> None:
     s.add_argument("--config", required=True,
                    help="JSON file: an 'assets' list of CUR+issuer strings, or an explicit 'pairs' list of two-asset lists")
     s.add_argument("--rpc", nargs="+", default=list(DEFAULT_URLS), help="rippled JSON-RPC URLs, tried in turn")
-    s.add_argument("--loop", type=float, default=0, metavar="SECONDS", help="repeat forever with this pause (default: scan once)")
     s.add_argument("--out", help="append scan and opportunity rows to this JSONL file")
     s.add_argument("--max-xrp", type=float, default=100.0, help="largest XRP input to consider")
     s.add_argument("--max-legs", type=int, default=4, choices=(2, 3, 4, 5))
@@ -96,21 +95,46 @@ def main(argv=None, client: XrplClient | None = None) -> int:
                    help="minimum profit as %% of the input. The default sits above the worst over-estimate seen against "
                    "the ledger's own quotes (0.24%%); it is also the margin for the ledger moving before a payment lands")
     s.add_argument("--book-limit", type=int, default=60, help="offers read per order book")
-    s.add_argument("--workers", type=int, default=6, help="parallel requests per scan")
+    s.add_argument("--workers", type=int, default=6, help="parallel requests per read")
     s.add_argument("--account", help="the wallet that would trade: it pays an AMM's discounted fee where it holds, or is "
                    "authorized on, the live auction slot (default: everyone pays the full fee)")
+
+
+def open_sink(path: str | None):
+    if not path:
+        return None
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    return open(path, "a")
+
+
+def main(argv=None, client: XrplClient | None = None, connect=None) -> int:
+    p = argparse.ArgumentParser(prog="python -m xrpl_arb", description=__doc__.split("\n\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("scan", help="look for cycle arbitrage by polling (read-only)")
+    add_common(s)
+    s.add_argument("--loop", type=float, default=0, metavar="SECONDS", help="repeat forever with this pause (default: scan once)")
+    w = sub.add_parser("watch", help="re-check at every ledger close, driven by a websocket (read-only)")
+    add_common(w)
+    w.add_argument("--ws", nargs="+", default=list(DEFAULT_WS), help="rippled websocket URLs, tried in turn")
+    w.add_argument("--settle", type=float, default=0.35,
+                   help="seconds to keep collecting transactions after a ledger closes before reading")
+    w.add_argument("--full-every", type=int, default=20, help="re-read every pair this often, as a safety net")
+    w.add_argument("--minutes", type=float, default=0, help="stop after this long (default: run until interrupted)")
+    w.add_argument("--max-ledgers", type=int, default=0, help="stop after this many ledgers (default: no limit)")
     args = p.parse_args(argv)
     if args.account and not is_valid_address(args.account):
         p.error(f"--account {args.account!r} is not a valid XRPL address")
 
     config = load_config(args.config)
     client = client or XrplClient(args.rpc)
-    rates = RateCache(client)
-    sink = None
-    if args.out:
-        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        sink = open(args.out, "a")
+    sink = open_sink(args.out)
     try:
+        if args.cmd == "watch":
+            assets, pairs = config
+            if pairs is None:
+                pairs = list(combinations([XRP] + [a for a in assets if not a.is_xrp], 2))
+            return watch(client, pairs, args, sink=sink, **({"connect": connect} if connect else {}))
+        rates = RateCache(client)
         while True:
             try:
                 one_scan(client, config, rates, args, sink)

@@ -79,7 +79,63 @@ def parse_pool(result: dict, a: Asset, b: Asset, account: str | None = None) -> 
     r1, r2 = amount_value(amm["amount"]), amount_value(amm["amount2"])
     if r1 <= 0 or r2 <= 0:
         return None
-    return Pool(a1, a2, r1, r2, pool_fee(amm, account))
+    return Pool(a1, a2, r1, r2, pool_fee(amm, account), amm.get("account"))
+
+
+@dataclass
+class Reads:
+    pools: dict[frozenset, Pool | None]
+    books: dict[tuple[Asset, Asset], tuple[Offer, ...]]
+    skipped: list[str]  # reads whose response couldn't be understood; the pair is left out
+    consistent: bool  # False if a read had to fall back to a newer ledger
+
+
+def read_pairs(client: XrplClient, pairs: list[tuple[Asset, Asset]], ledger, book_limit: int = 60,
+               workers: int = 6, account: str | None = None) -> Reads:
+    """The AMM pool and both order books of each pair, read at `ledger` (an index or "validated") in parallel."""
+    fell_back: list[bool] = []
+    skipped: list[str] = []
+    odd = (KeyError, TypeError, ValueError, ArithmeticError)  # a response that doesn't look like a pool or a book
+
+    def pinned(read):
+        try:
+            return read(ledger)
+        except XrplError as e:
+            if e.code != "lgrNotFound":  # the node we landed on doesn't have that ledger (yet)
+                raise
+            fell_back.append(True)
+            return read("validated")
+
+    def read_pool(pair):
+        a, b = pair
+        try:
+            return parse_pool(pinned(lambda at: client.amm_info(a, b, ledger=at)), a, b, account)
+        except XrplError as e:
+            if e.code == "badPool":
+                skipped.append(f"pool {a.short()}/{b.short()}: {e}")
+            elif e.code != "actNotFound":
+                raise
+        except odd as e:
+            skipped.append(f"pool {a.short()}/{b.short()}: {type(e).__name__} {e}")
+        return None
+
+    def read_book(edge):
+        x, y = edge  # offers selling y for x
+        try:
+            return parse_offers(pinned(lambda at: client.book_offers(taker_gets=y, taker_pays=x, limit=book_limit, ledger=at)))
+        except odd as e:
+            skipped.append(f"book {x.short()}->{y.short()}: {type(e).__name__} {e}")
+            return ()
+
+    edges = [e for a, b in pairs for e in ((a, b), (b, a))]
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+        pools = dict(zip((frozenset(p) for p in pairs), ex.map(read_pool, pairs)))
+        books = dict(zip(edges, ex.map(read_book, edges)))
+    return Reads(pools, books, sorted(skipped), not fell_back)
+
+
+def build_markets(edges, pools: dict, books: dict, rates: RateCache) -> dict[tuple[Asset, Asset], Market]:
+    return {(x, y): Market(x, y, books[(x, y)], pools[frozenset((x, y))], rates.get(x)) for x, y in edges}
 
 
 def take_snapshot(client: XrplClient, assets: list[Asset], rates: RateCache, book_limit: int = 60,
@@ -96,45 +152,8 @@ def take_snapshot(client: XrplClient, assets: list[Asset], rates: RateCache, boo
     else:
         pairs = list({frozenset(p): p for p in pairs}.values())  # (a, b) and (b, a) are one pair
     pin = client.validated_ledger()
-    fell_back: list[bool] = []
-    skipped: list[str] = []
-    odd = (KeyError, TypeError, ValueError, ArithmeticError)  # a response that doesn't look like a pool or a book
-
-    def pinned(read):
-        try:
-            return read(pin)
-        except XrplError as e:
-            if e.code != "lgrNotFound":  # the node we landed on doesn't have that ledger (yet)
-                raise
-            fell_back.append(True)
-            return read("validated")
-
-    def read_pool(pair):
-        a, b = pair
-        try:
-            return parse_pool(pinned(lambda ledger: client.amm_info(a, b, ledger=ledger)), a, b, account)
-        except XrplError as e:
-            if e.code == "badPool":
-                skipped.append(f"pool {a.short()}/{b.short()}: {e}")
-            elif e.code != "actNotFound":
-                raise
-        except odd as e:
-            skipped.append(f"pool {a.short()}/{b.short()}: {type(e).__name__} {e}")
-        return None
-
-    def read_book(edge):
-        x, y = edge  # offers selling y for x
-        try:
-            return parse_offers(pinned(lambda ledger: client.book_offers(taker_gets=y, taker_pays=x, limit=book_limit, ledger=ledger)))
-        except odd as e:
-            skipped.append(f"book {x.short()}->{y.short()}: {type(e).__name__} {e}")
-            return ()
-
+    reads = read_pairs(client, pairs, pin, book_limit, workers, account)
     edges = [e for a, b in pairs for e in ((a, b), (b, a))]
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-        pools = dict(zip((frozenset(p) for p in pairs), ex.map(read_pool, pairs)))
-        books = dict(zip(edges, ex.map(read_book, edges)))
-
-    markets = {(x, y): Market(x, y, books[(x, y)], pools[frozenset((x, y))], rates.get(x)) for x, y in edges}
-    return Snapshot(markets, pin, not fell_back, sum(bool(o) for o in books.values()),
-                    sum(p is not None for p in pools.values()), sorted(skipped))
+    return Snapshot(build_markets(edges, reads.pools, reads.books, rates), pin, reads.consistent,
+                    sum(bool(o) for o in reads.books.values()), sum(p is not None for p in reads.pools.values()),
+                    reads.skipped)

@@ -44,6 +44,7 @@ class Pool:
     ra: Decimal
     rb: Decimal
     fee: Decimal  # fraction, e.g. 0.003
+    account: str | None = None  # the pool's AMM account, as the ledger's metadata names it
 
     @property
     def key(self) -> frozenset:
@@ -59,7 +60,8 @@ class Pool:
         m = ONE - self.fee
         dy = y * m * dx / (x + m * dx)
         x, y = x + dx, y - dy
-        return dy, (Pool(self.a, self.b, x, y, self.fee) if asset_in == self.a else Pool(self.a, self.b, y, x, self.fee))
+        ra, rb = (x, y) if asset_in == self.a else (y, x)
+        return dy, Pool(self.a, self.b, ra, rb, self.fee, self.account)
 
 
 def _amm_in_to_price(x: Decimal, y: Decimal, m: Decimal, price: Decimal) -> Decimal:
