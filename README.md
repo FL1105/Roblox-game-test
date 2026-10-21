@@ -25,6 +25,18 @@ Windows: double-click `start_terminal.bat` (needs Python 3.10+ installed).
 Set `SOLANA_RPC_URL` to a private RPC (Helius, QuickNode, ...). The public endpoint rate-limits fast.
 Install the listener's one dependency with `pip install -r requirements-live.txt`.
 
+## XRPL arbitrage bot (`xrpl_arb`)
+
+A separate package, not part of the Solana tools above. It scans the XRP Ledger's order books and AMM pools every ledger, prices every cycle that ends where it started, and shows it all on a live dashboard. It starts in **paper mode (real ledger data, no wallet, nothing sent)**; live trading exists but is opt-in, needs a seed in an environment variable, and has not been run with real funds.
+
+```
+python -m xrpl_arb                      # real mainnet data, paper trading, dashboard at http://127.0.0.1:8780
+python -m xrpl_arb --demo               # synthetic markets, nothing real
+python -m unittest tests.test_xrpl_arb
+```
+
+Python standard library only (live trading also needs `xrpl-py`). How it works, what was checked against the ledger, and what it cannot do (the ledger cannot make a multi-leg cycle atomic) are in `xrpl_arb/README.md`.
+
 ## The terminal (`sniper/terminal`)
 
 A browser dashboard (Dashboard / Logs / Profile) over the same paper engine. It serves on `127.0.0.1` only.

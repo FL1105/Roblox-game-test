@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XRPL Arb Console</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,.10); --wash: rgba(11,11,11,.04);
+  --s1: #2a78d6; --s2: #eb6834; --context: #b4b2aa;
+  --good: #0ca30c; --good-text: #006300; --warn: #fab219; --warn-text: #7a5300; --crit: #d03b3b; --crit-text: #a62727;
+  --live-bg: #fbe9e9; --demo-bg: #fdf3d9; --paper-bg: #eaf2fc;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10); --wash: rgba(255,255,255,.05);
+    --s1: #3987e5; --s2: #d95926; --context: #4a4a46;
+    --good-text: #0ca30c; --warn-text: #fab219; --crit-text: #ec6b6b;
+    --live-bg: #3a1c1c; --demo-bg: #3a2f12; --paper-bg: #15283f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,.10); --wash: rgba(255,255,255,.05);
+  --s1: #3987e5; --s2: #d95926; --context: #4a4a46;
+  --good-text: #0ca30c; --warn-text: #fab219; --crit-text: #ec6b6b;
+  --live-bg: #3a1c1c; --demo-bg: #3a2f12; --paper-bg: #15283f;
+}
+* { box-sizing: border-box; }
+html { background: var(--page); }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 48px; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px 0 12px; }
+header h1 { font-size: 16px; font-weight: 650; margin: 0; letter-spacing: .01em; }
+header .spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--ring); background: var(--surface); color: var(--ink2); font-size: 12.5px; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.dot.ok { background: var(--good); } .dot.bad { background: var(--crit); }
+button, select, input { font: inherit; color: var(--ink); }
+button { background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
+button:hover { background: var(--wash); }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+button.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+button.small { padding: 2px 8px; font-size: 12px; }
+#banner { border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--ring); display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+#banner b { font-weight: 650; }
+#banner.paper { background: var(--paper-bg); } #banner.demo { background: var(--demo-bg); } #banner.live { background: var(--live-bg); border-color: var(--crit); }
+#alert { display: none; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--crit); background: var(--live-bg); color: var(--ink); }
+.controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.controls .hint { color: var(--ink2); font-size: 13px; }
+details.settings { margin-left: auto; }
+details.settings summary { cursor: pointer; list-style: none; padding: 5px 12px; border: 1px solid var(--ring); border-radius: 8px; background: var(--surface); display: inline-block; }
+details.settings[open] summary { background: var(--wash); }
+.settings-body { position: absolute; right: 16px; z-index: 5; margin-top: 6px; background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 14px; width: min(420px, calc(100vw - 32px)); box-shadow: 0 8px 28px rgba(0,0,0,.18); }
+.settings-body label { display: grid; grid-template-columns: 1fr 110px; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+.settings-body label span small { display: block; color: var(--muted); font-size: 11.5px; }
+.settings-body input { width: 100%; padding: 4px 8px; border: 1px solid var(--ring); border-radius: 6px; background: var(--page); text-align: right; }
+.settings-body .err { color: var(--crit-text); font-size: 12.5px; min-height: 18px; }
+.card { background: var(--surface); border: 1px solid var(--ring); border-radius: 14px; padding: 14px 16px; margin: 0; min-width: 0; }
+.card h2 { font-size: 13.5px; font-weight: 650; margin: 0; }
+.card .sub { color: var(--ink2); font-size: 12.5px; margin: 2px 0 8px; }
+.card header { padding: 0; align-items: flex-start; gap: 8px; }
+.card header > div { flex: 1; min-width: 0; }
+.kpis { display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+.tile .label { color: var(--ink2); font-size: 12.5px; }
+.tile .value { font-size: 24px; font-weight: 650; margin-top: 2px; }
+.tile .note { color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+.hero .value { font-size: 52px; line-height: 1.05; letter-spacing: -.01em; }
+.hero .value small { font-size: 16px; font-weight: 500; color: var(--ink2); margin-left: 4px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.plot { position: relative; width: 100%; height: 230px; }
+.plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.plot .empty { position: absolute; inset: 0; display: flex; align-items: flex-start; padding-top: 14px; justify-content: center; color: var(--muted); font-size: 13px; text-align: center; padding-left: 24px; padding-right: 24px; pointer-events: none; }
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 6px 9px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.16); z-index: 3; white-space: nowrap; display: none; }
+.tip .t { color: var(--muted); margin-bottom: 2px; }
+.tip .row { display: flex; align-items: center; gap: 6px; }
+.tip .key { width: 12px; height: 2px; border-radius: 1px; display: inline-block; }
+.tip .v { font-weight: 650; font-variant-numeric: tabular-nums; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink2); margin-bottom: 4px; }
+.legend i { display: inline-block; width: 14px; height: 2px; border-radius: 1px; vertical-align: middle; margin-right: 5px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+th.n, td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.tablewrap { overflow-x: auto; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--ring); white-space: nowrap; }
+.chip.good { color: var(--good-text); } .chip.warn { color: var(--warn-text); } .chip.crit { color: var(--crit-text); } .chip.mute { color: var(--ink2); font-weight: 500; }
+.bar { position: relative; height: 8px; background: var(--wash); border-radius: 4px; min-width: 120px; }
+.bar i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.bar b { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--ink2); }
+.bar u { position: absolute; top: -3px; bottom: -3px; left: 50%; width: 1px; background: var(--axis); }
+.legs { color: var(--ink2); font-size: 12px; }
+.log { max-height: 260px; overflow: auto; font-size: 12.5px; }
+.log div { padding: 3px 0; border-bottom: 1px solid var(--grid); display: flex; gap: 8px; }
+.log time { color: var(--muted); flex: none; font-variant-numeric: tabular-nums; }
+.log .warn { color: var(--warn-text); } .log .error { color: var(--crit-text); }
+.foot { color: var(--muted); font-size: 12px; margin-top: 18px; line-height: 1.6; }
+.stale { opacity: .55; transition: opacity .2s; }
+.sr { position: absolute; left: -9999px; }
+@media (max-width: 980px) { .kpis { grid-template-columns: 1fr 1fr; } .hero { grid-column: 1 / -1; } .grid2 { grid-template-columns: 1fr; } }
+@media (max-width: 700px) {
+  #routes th:nth-child(n+6), #routes td:nth-child(n+6), #markets th:nth-child(3), #markets td:nth-child(3), #markets th:nth-child(6), #markets td:nth-child(6) { display: none; }
+}
+@media (max-width: 520px) { .kpis { grid-template-columns: 1fr; } .hero .value { font-size: 44px; } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <h1>XRPL Arb Console</h1>
+    <span class="pill" id="pLedger"><span class="dot" id="dConn"></span><span id="tLedger">connecting…</span></span>
+    <span class="pill" id="pNode" title="data source"></span>
+    <span class="spacer"></span>
+    <button id="btnTheme" type="button" class="small" aria-label="Toggle light and dark theme">Theme</button>
+  </header>
+
+  <div id="banner" role="status"></div>
+  <div id="alert" role="alert"></div>
+
+  <div class="controls">
+    <button id="btnRun" class="primary" type="button">Stop</button>
+    <span class="hint" id="runHint"></span>
+    <details class="settings" id="settings">
+      <summary>Settings</summary>
+      <form class="settings-body" id="form" autocomplete="off">
+        <label><span>Min net profit<small>basis points of trade size</small></span><input name="min_profit_bps" type="number" step="any"></label>
+        <label><span>Min net profit<small>absolute, in base units</small></span><input name="min_profit_base" type="number" step="any"></label>
+        <label><span>Smallest trade<small>base units</small></span><input name="size_min" type="number" step="any"></label>
+        <label><span>Largest trade<small>base units</small></span><input name="size_max" type="number" step="any"></label>
+        <label><span>Leg-1 slippage allowed<small>bps below the quote</small></span><input name="slip_bps" type="number" step="any"></label>
+        <label><span>Unwind loss limit<small>bps of trade size</small></span><input name="max_loss_bps" type="number" step="any"></label>
+        <label><span>Route cooldown<small>ledgers</small></span><input name="cooldown_ledgers" type="number" step="1"></label>
+        <div class="err" id="formErr" role="alert"></div>
+        <button type="submit" class="primary">Apply</button>
+      </form>
+    </details>
+  </div>
+
+  <section class="kpis" aria-label="Key figures">
+    <div class="card tile hero">
+      <div class="label">Best cycle right now</div>
+      <div class="value" id="heroV">–</div>
+      <div class="note" id="heroN"></div>
+    </div>
+    <div class="card tile"><div class="label">Cycles above threshold</div><div class="value" id="k2">–</div><div class="note" id="k2n"></div></div>
+    <div class="card tile"><div class="label">Trades</div><div class="value" id="k3">–</div><div class="note" id="k3n"></div></div>
+    <div class="card tile"><div class="label">Realized P&amp;L</div><div class="value" id="k4">–</div><div class="note" id="k4n"></div></div>
+    <div class="card tile" id="walletTile"><div class="label" id="k5l">Theoretical P&amp;L</div><div class="value" id="k5">–</div><div class="note" id="k5n"></div></div>
+  </section>
+
+  <section class="grid2">
+    <figure class="card" id="edgeCard">
+      <header><div><h2>Best cycle edge, every ledger</h2><div class="sub">Net profit as a share of trade size, after fees. A trade needs the line above the threshold.</div></div><button class="small tbl" type="button" aria-pressed="false">Table</button></header>
+      <div class="plot" id="edgePlot"></div>
+    </figure>
+    <figure class="card" id="pnlCard">
+      <header><div><h2>Cumulative profit</h2><div class="sub">Quoted when the cycle was seen vs. what the later legs actually filled at.</div></div><button class="small tbl" type="button" aria-pressed="false">Table</button></header>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Quoted at detection</span><span><i style="background:var(--s2)"></i>Realized after legs</span></div>
+      <div class="plot" id="pnlPlot"></div>
+    </figure>
+  </section>
+
+  <section class="card" style="margin-bottom:12px">
+    <header><div><h2>Cycles</h2><div class="sub">Every closed loop through the watched markets, sized to its most profitable trade. Bars show net edge; the tick marks the threshold.</div></div></header>
+    <div class="tablewrap"><table id="routes"><thead><tr><th>Route</th><th>Status</th><th class="n">Size</th><th class="n">Net profit</th><th class="n">Edge</th><th style="min-width:150px">vs. threshold</th><th>Venue per leg</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="card" style="margin-bottom:12px">
+    <header><div><h2>Markets</h2><div class="sub">AMM pool against the order book. Venue gap is the best price difference between the two after the pool fee; positive means a tiny trade could cross them.</div></div></header>
+    <div class="tablewrap"><table id="markets"><thead><tr><th>Pair</th><th class="n">AMM pool</th><th class="n">Pool fee</th><th class="n">Book bid</th><th class="n">Book ask</th><th class="n">Spread</th><th class="n">Venue gap</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section class="grid2">
+    <div class="card"><header><div><h2>Trades</h2></div></header><div class="tablewrap"><table id="trades"><thead><tr><th>#</th><th>Route</th><th class="n">Size</th><th class="n">Quoted</th><th>Result</th><th class="n">Realized</th></tr></thead><tbody></tbody></table></div><div class="sub" id="noTrades"></div></div>
+    <div class="card"><header><div><h2>Events</h2></div></header><div class="log" id="events"></div></div>
+  </section>
+
+  <p class="foot" id="foot"></p>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) { if (k === "class") e.className = v; else if (v !== false && v != null) e.setAttribute(k, v); }
+  for (const k of kids.flat()) e.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return e;
+}
+function sv(tag, attrs) { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); return e; }
+
+// ---- formatting (all dynamic text goes through textContent / text nodes) ----------------------------------------
+const sgn = (x, d = 1) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(d);
+function compact(x) {
+  const a = Math.abs(x);
+  if (a >= 1e9) return (x / 1e9).toFixed(2) + "B"; if (a >= 1e6) return (x / 1e6).toFixed(2) + "M";
+  if (a >= 1e4) return (x / 1e3).toFixed(1) + "K"; if (a >= 100) return x.toFixed(0); if (a >= 1) return x.toFixed(2); return x.toPrecision(3);
+}
+function price(x) { if (x == null) return "–"; const a = Math.abs(x); return a >= 1000 ? x.toFixed(1) : a >= 10 ? x.toFixed(3) : a >= 0.01 ? x.toFixed(5) : x.toPrecision(4); }
+const hhmmss = t => new Date(t * 1000).toLocaleTimeString([], { hour12: false });
+const hhmm = t => new Date(t * 1000).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit" });
+const axisTime = span => span < 600 ? hhmmss : hhmm;
+
+// ---- theme ------------------------------------------------------------------------------------------------------
+function applyTheme(t) { if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme"); }
+try { applyTheme(localStorage.getItem("theme")); } catch (e) {}
+$("#btnTheme").onclick = () => {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark" || (!document.documentElement.getAttribute("data-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
+  const next = dark ? "light" : "dark"; applyTheme(next); try { localStorage.setItem("theme", next); } catch (e) {} redraw();
+};
+
+// ---- line chart ---------------------------------------------------------------------------------------------------
+// series: [{name, cssVar, pts:[{x,y|null}]}], refs: [{y,label}], endLabel: fn(series)->text, yFmt, xFmt
+function lineChart(host, o) {
+  host.textContent = "";
+  const W = host.clientWidth || 500, H = host.clientHeight || 230, m = { l: 46, r: 62, t: 8, b: 22 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const all = o.series.flatMap(s => s.pts.filter(p => p.y != null));
+  const svg = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": o.aria });
+  host.append(svg);
+  if (!all.length) { host.append(h("div", { class: "empty" }, o.empty || "Waiting for data…")); return; }
+  const xs = all.map(p => p.x); let x0 = Math.min(...xs), x1 = Math.max(...xs); if (x1 === x0) x1 = x0 + 1;
+  let ys = all.map(p => p.y).concat((o.refs || []).map(r => r.y), o.includeZero ? [0] : []);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys); if (y1 - y0 < (o.minSpan || 1e-9)) { const c = (y0 + y1) / 2; y0 = c - (o.minSpan || 1) / 2; y1 = c + (o.minSpan || 1) / 2; }
+  const pad = (y1 - y0) * 0.12; y0 -= pad; y1 += pad;
+  const X = x => m.l + (x - x0) / (x1 - x0) * pw, Y = y => m.t + (1 - (y - y0) / (y1 - y0)) * ph;
+  const css = getComputedStyle(document.documentElement);
+  const col = v => css.getPropertyValue(v).trim();
+  // grid + y ticks (nice numbers)
+  const step = niceStep((y1 - y0) / 4);
+  for (let v = Math.ceil(y0 / step) * step; v <= y1; v += step) {
+    svg.append(sv("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: v === 0 ? col("--axis") : col("--grid"), "stroke-width": 1 }));
+    const t = sv("text", { x: m.l - 6, y: Y(v) + 4, "text-anchor": "end", fill: col("--muted"), "font-size": 11 }); t.textContent = o.yFmt(v); svg.append(t);
+  }
+  // x ticks
+  for (let i = 0; i <= 4; i++) { const x = x0 + (x1 - x0) * i / 4; const t = sv("text", { x: X(x), y: H - 5, "text-anchor": i === 0 ? "start" : i === 4 ? "end" : "middle", fill: col("--muted"), "font-size": 11 }); t.textContent = (o.xFmt === hhmm ? axisTime(x1 - x0) : o.xFmt)(x); svg.append(t); }
+  for (const r of o.refs || []) {
+    svg.append(sv("line", { x1: m.l, x2: W - m.r, y1: Y(r.y), y2: Y(r.y), stroke: col("--ink2"), "stroke-width": 1 }));
+    const t = sv("text", { x: W - m.r + 6, y: Y(r.y) + 4, fill: col("--ink2"), "font-size": 11 }); t.textContent = r.label; svg.append(t);
+  }
+  const ends = [];
+  for (const s of o.series) {
+    let d = "", pen = false, last = null;
+    for (const p of s.pts) { if (p.y == null) { pen = false; continue; } d += (pen ? "L" : "M") + X(p.x).toFixed(1) + " " + Y(p.y).toFixed(1); pen = true; last = p; }
+    svg.append(sv("path", { d, fill: "none", stroke: col(s.cssVar), "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    if (last) { // end dot with a surface ring + value label
+      svg.append(sv("circle", { cx: X(last.x), cy: Y(last.y), r: 5, fill: col(s.cssVar), stroke: col("--surface"), "stroke-width": 2 }));
+      ends.push({ y: Y(last.y), text: o.endLabel ? o.endLabel(s, last) : "" });
+    }
+  }
+  if (ends.length > 1) ends.sort((a, b) => a.y - b.y);
+  let prev = -99; for (const e of ends) { let y = e.y + 4; if (y - prev < 13) y = prev + 13; prev = y; if (e.text) { const t = sv("text", { x: W - m.r + 10, y, fill: col("--ink"), "font-size": 11.5, "font-weight": 600 }); t.textContent = e.text; svg.append(t); } }
+  // crosshair + tooltip
+  const cross = sv("line", { y1: m.t, y2: m.t + ph, stroke: col("--ink2"), "stroke-width": 1, visibility: "hidden" }); svg.append(cross);
+  const hit = sv("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent", tabindex: 0 }); svg.append(hit);
+  const tip = $("#tip");
+  const near = (s, x) => { let best = null, bd = 1e18; for (const p of s.pts) { if (p.y == null) continue; const d = Math.abs(p.x - x); if (d < bd) { bd = d; best = p; } } return best; };
+  const show = ev => {
+    const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * (W / r.width);
+    const x = x0 + (Math.min(Math.max(px, m.l), W - m.r) - m.l) / pw * (x1 - x0);
+    const rows = o.series.map(s => [s, near(s, x)]).filter(([, p]) => p); if (!rows.length) return;
+    const px0 = X(rows[0][1].x); cross.setAttribute("x1", px0); cross.setAttribute("x2", px0); cross.setAttribute("visibility", "visible");
+    tip.textContent = ""; tip.append(h("div", { class: "t" }, o.tipTitle(rows[0][1])));
+    for (const [s, p] of rows) { const k = h("span", { class: "key" }); k.style.background = col(s.cssVar); tip.append(h("div", { class: "row" }, k, h("span", { class: "v" }, o.yFmt(p.y, true)), h("span", { style: "color:var(--ink2)" }, s.name))); }
+    tip.style.display = "block";
+    const tw = tip.offsetWidth; let left = ev.clientX + 14; if (left + tw > innerWidth - 8) left = ev.clientX - tw - 14;
+    tip.style.left = left + "px"; tip.style.top = (ev.clientY + 14 + scrollY) + "px";
+  };
+  const hide = () => { cross.setAttribute("visibility", "hidden"); tip.style.display = "none"; };
+  hit.addEventListener("pointermove", show); hit.addEventListener("pointerleave", hide);
+}
+function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw))); const f = raw / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }
+
+// ---- state + rendering ------------------------------------------------------------------------------------------
+let S = null, tableMode = { edgeCard: false, pnlCard: false };
+const unit = () => (S && S.config.base) || "";
+
+function chip(status) {
+  const m = { "EXECUTABLE": ["good", "✓"], "BELOW THRESHOLD": ["warn", "▲"], "NO EDGE": ["mute", "–"], "THIN BOOK": ["mute", "≈"], "COOLDOWN": ["mute", "⏸"], "NO DATA": ["mute", "?"], "NOT TRADABLE": ["mute", "⊘"],
+              "WON": ["good", "✓"], "LOST": ["crit", "✕"], "MISSED": ["mute", "–"], "STUCK": ["crit", "!"], "OPEN": ["warn", "●"] };
+  const [cls, icon] = m[status] || ["mute", ""]; return h("span", { class: "chip " + cls }, icon + " " + status.toLowerCase());
+}
+
+function render(s) {
+  S = s;
+  document.body.classList.remove("stale");
+  const L = s.ledger, age = L.close_time ? Math.max(0, s.now - L.close_time) : null;
+  $("#tLedger").textContent = L.index ? `ledger ${L.index.toLocaleString()} · ${age != null ? age.toFixed(0) + " s ago" : ""}` : "waiting for first ledger…";
+  $("#dConn").className = "dot " + (s.connected ? "ok" : "bad");
+  $("#pNode").textContent = s.source === "demo" ? "synthetic data" : s.node.replace(/^https?:\/\//, "") + (L.fetch_ms ? ` · read in ${L.fetch_ms.toFixed(0)} ms` : "");
+  const b = $("#banner"); b.textContent = "";
+  if (s.mode === "live") { b.className = "live"; b.append(h("b", {}, "✕ LIVE TRADING"), h("span", {}, "Transactions are being sent from the configured wallet with real funds.")); }
+  else if (s.source === "demo") { b.className = "demo"; b.append(h("b", {}, "▲ DEMO"), h("span", {}, "Synthetic markets generated locally. Nothing on this page is real; it only shows how the console behaves.")); }
+  else { b.className = "paper"; b.append(h("b", {}, "PAPER TRADING"), h("span", {}, "Real XRP Ledger data, no wallet, nothing is sent. Each leg of a paper trade fills against a later ledger's real books and pools.")); }
+  const al = $("#alert");
+  if (s.halted) { al.style.display = "block"; al.textContent = "Halted: " + s.halted + ". Press Resume once you have looked at it."; } else al.style.display = "none";
+  const run = $("#btnRun"); run.textContent = s.running ? "Stop" : (s.halted ? "Resume" : "Start"); run.className = s.running ? "" : "primary";
+  $("#runHint").textContent = s.running ? "Scanning and opening trades that clear the threshold." : "Scanning only: no new trades are opened.";
+
+  // hero + tiles
+  const st = s.stats, u = unit(), top = s.routes.find(r => r.edge_bps != null);
+  if (top) {
+    $("#heroV").textContent = ""; $("#heroV").append(sgn(top.edge_bps, 1), h("small", {}, "bps"));
+    const need = s.config.min_profit_bps;
+    $("#heroN").textContent = `${top.route} · ${top.status.toLowerCase()} · needs ${sgn(need, 0)} bps and ≥ ${s.config.min_profit_base} ${u} to trade`;
+  } else { $("#heroV").textContent = "–"; $("#heroN").textContent = "no complete data yet"; }
+  $("#k2").textContent = `${st.executable}`; $("#k2n").textContent = `over ${st.ledgers.toLocaleString()} ledgers · ${st.profitable} with any positive net profit`;
+  $("#k3").textContent = `${st.opened}`; $("#k3n").textContent = `${st.won} won · ${st.lost} lost · ${st.missed} missed${st.stuck ? " · " + st.stuck + " stuck" : ""}`;
+  $("#k4").textContent = `${sgn(st.pnl_real, 4)} ${u}`; $("#k4n").textContent = `fees ${st.fees.toFixed(4)} ${u} included`;
+  if (s.account) { $("#k5l").textContent = "Wallet"; $("#k5").textContent = `${compact(s.account.base_balance)} ${u}`; $("#k5n").textContent = `${s.account.address} · XRP ${compact(s.account.xrp)}`; }
+  else { $("#k5l").textContent = "Quoted P&L"; $("#k5").textContent = `${sgn(st.pnl_theory, 4)} ${u}`; $("#k5n").textContent = "if every cycle had filled at its detection quote"; }
+
+  // settings form (don't overwrite what the user is typing)
+  const form = $("#form");
+  if (!form.contains(document.activeElement)) for (const el of form.querySelectorAll("input")) if (s.config[el.name] != null) el.value = s.config[el.name];
+
+  redraw(); renderRoutes(s); renderMarkets(s); renderTrades(s); renderEvents(s);
+  $("#foot").textContent = `Base asset ${u}; every figure is in ${u} unless marked. The ledger cannot make a multi-leg cycle atomic, so each leg is its own transaction in a later ledger and the profit is not guaranteed. ` +
+    `Network fee ≈ ${s.config.fee_drops} drops per transaction. Up for ${Math.round(s.uptime / 60)} min.`;
+}
+
+function redraw() {
+  if (!S) return;
+  const s = S, u = unit(), thr = s.config.min_profit_bps;
+  const sp = s.series;
+  // edge chart
+  const edgeHost = $("#edgePlot");
+  if (tableMode.edgeCard) tableView(edgeHost, ["Time", "Ledger", "Best edge (bps)"], sp.slice(-40).reverse().map(p => [hhmmss(p.t), p.ledger, p.edge == null ? "–" : sgn(p.edge, 2)]));
+  else lineChart(edgeHost, {
+    aria: "Best cycle edge in basis points per ledger", series: [{ name: "best cycle", cssVar: "--s1", pts: sp.map(p => ({ x: p.t, y: p.edge, ledger: p.ledger })) }],
+    refs: [{ y: thr, label: `trade ≥ ${sgn(thr, 0)}` }], includeZero: true, minSpan: 20,
+    yFmt: (v, full) => full ? sgn(v, 2) + " bps" : sgn(v, Math.abs(v) < 10 && v % 1 ? 1 : 0), xFmt: hhmm, tipTitle: p => `${hhmmss(p.x)} · ledger ${p.ledger}`,
+    endLabel: (sr, p) => sgn(p.y, 1) + " bps", empty: "Waiting for the first ledger…" });
+  // pnl chart
+  const pnlHost = $("#pnlPlot");
+  const hasTrades = s.stats.opened > 0;
+  if (tableMode.pnlCard) tableView(pnlHost, ["Time", "Quoted", "Realized"], sp.slice(-40).reverse().map(p => [hhmmss(p.t), sgn(p.theory, 4), sgn(p.real, 4)]));
+  else {
+    lineChart(pnlHost, {
+      aria: "Cumulative profit, quoted and realized", series: [
+        { name: "quoted at detection", cssVar: "--s1", pts: sp.map(p => ({ x: p.t, y: p.theory, ledger: p.ledger })) },
+        { name: "realized after legs", cssVar: "--s2", pts: sp.map(p => ({ x: p.t, y: p.real, ledger: p.ledger })) }],
+      includeZero: true, minSpan: 0.2, yFmt: (v, full) => (full ? sgn(v, 4) + " " + u : sgn(v, Math.abs(v) < 1 && v ? 2 : 0)), xFmt: hhmm, tipTitle: p => `${hhmmss(p.x)} · ledger ${p.ledger}`,
+      endLabel: (sr, p) => sgn(p.y, 3), empty: "Waiting for the first ledger…" });
+    if (!hasTrades && sp.length) pnlHost.append(h("div", { class: "empty" }, "No trades yet. The bot only opens one when a cycle clears the threshold."));
+  }
+  for (const id of ["edgeCard", "pnlCard"]) { const bt = $("#" + id + " .tbl"); bt.textContent = tableMode[id] ? "Chart" : "Table"; bt.setAttribute("aria-pressed", tableMode[id]); }
+}
+function tableView(host, heads, rows) {
+  host.textContent = "";
+  const t = h("table", {}, h("thead", {}, h("tr", {}, heads.map((x, i) => h("th", { class: i ? "n" : "" }, x)))), h("tbody", {}, rows.map(r => h("tr", {}, r.map((c, i) => h("td", { class: i ? "n" : "" }, c))))));
+  const w = h("div", { class: "tablewrap", style: "max-height:230px;overflow:auto" }, t); host.append(w);
+}
+for (const id of ["edgeCard", "pnlCard"]) $("#" + id + " .tbl").onclick = () => { tableMode[id] = !tableMode[id]; redraw(); };
+
+function renderRoutes(s) {
+  const tb = $("#routes tbody"); tb.textContent = ""; const u = unit(), thr = s.config.min_profit_bps;
+  const rows = s.routes.filter(r => r.edge_bps != null), none = s.routes.filter(r => r.edge_bps == null);
+  const span = Math.max(40, thr * 2, ...rows.map(r => Math.abs(r.edge_bps)));
+  for (const r of rows) {
+    const pos = r.edge_bps > 0, w = Math.min(50, Math.abs(r.edge_bps) / span * 50), bar = h("div", { class: "bar" });
+    const fill = h("i", {}); fill.style.cssText = `background:${pos ? "var(--s1)" : "var(--context)"};${pos ? "left:50%" : "right:50%"};width:${w}%`;
+    const tick = h("b", {}); tick.style.left = (50 + Math.min(50, thr / span * 50)) + "%";
+    bar.append(h("u", {}), fill, tick);
+    const legs = r.legs.map(l => `${l.from}→${l.to} ${l.amm >= 0.5 ? "pool" : l.amm > 0 ? "mixed" : "book"}`).join(" · ");
+    tb.append(h("tr", {}, h("td", {}, r.route), h("td", {}, chip(r.status)), h("td", { class: "n" }, `${compact(r.size)} ${u}`), h("td", { class: "n" }, sgn(r.profit, 4)), h("td", { class: "n" }, sgn(r.edge_bps, 1) + " bps"), h("td", {}, bar), h("td", { class: "legs" }, legs)));
+  }
+  for (const r of none) tb.append(h("tr", {}, h("td", {}, r.route), h("td", {}, chip(r.status)), h("td", { colspan: 5, class: "legs" }, r.note || "not evaluated this ledger")));
+}
+function renderMarkets(s) {
+  const tb = $("#markets tbody"); tb.textContent = "";
+  for (const m of s.markets) {
+    const pool = m.amm ? `${compact(m.amm.ra)} ${m.a} + ${compact(m.amm.rb)} ${m.b}` : "none";
+    const ve = m.venue_edge_bps;
+    tb.append(h("tr", {}, h("td", {}, m.pair), h("td", { class: "n" }, pool), h("td", { class: "n" }, m.amm ? (m.amm.fee_bps / 100).toFixed(2) + "%" : "–"),
+      h("td", { class: "n" }, price(m.bid)), h("td", { class: "n" }, price(m.ask)), h("td", { class: "n" }, m.spread_bps == null ? "–" : m.spread_bps.toFixed(0) + " bps"),
+      h("td", { class: "n" }, ve == null ? "–" : h("span", { class: "chip " + (ve > 0 ? "good" : "mute") }, (ve > 0 ? "✓ " : "") + sgn(ve, 0) + " bps"))));
+  }
+}
+function renderTrades(s) {
+  const tb = $("#trades tbody"); tb.textContent = ""; const u = unit();
+  for (const t of s.trades.slice(0, 30)) tb.append(h("tr", { title: t.note || "" }, h("td", {}, t.id), h("td", {}, `${t.route} @ ${t.ledger}`), h("td", { class: "n" }, `${compact(t.size)}`), h("td", { class: "n" }, sgn(t.expected, 4)),
+    h("td", {}, chip(t.status), t.note ? h("div", { class: "legs" }, t.note) : ""), h("td", { class: "n" }, t.realized == null ? "–" : sgn(t.realized, 4))));
+  $("#noTrades").textContent = s.trades.length ? "" : `No trades yet. A trade is opened only when a cycle's net profit clears both thresholds (${sgn(s.config.min_profit_bps, 0)} bps and ${s.config.min_profit_base} ${u}).`;
+}
+function renderEvents(s) {
+  const el = $("#events"); el.textContent = "";
+  for (const e of s.events.slice(0, 40)) el.append(h("div", {}, h("time", {}, hhmmss(e.t)), h("span", { class: e.level }, e.msg)));
+  if (!s.events.length) el.append(h("div", {}, "Nothing yet."));
+}
+
+// ---- controls ---------------------------------------------------------------------------------------------------
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j;
+}
+$("#btnRun").onclick = () => post("/api/bot", { running: !(S && S.running) }).catch(e => alert(e.message));
+$("#form").onsubmit = async ev => {
+  ev.preventDefault(); const body = {};
+  for (const el of $("#form").querySelectorAll("input")) if (el.value !== "") body[el.name] = Number(el.value);
+  try { await post("/api/settings", body); $("#formErr").textContent = ""; $("#settings").open = false; } catch (e) { $("#formErr").textContent = e.message; }
+};
+
+// ---- live stream with polling fallback ----------------------------------------------------------------------------
+let es = null, poll = null;
+function startPolling() {
+  if (poll) return;
+  poll = setInterval(async () => { try { render(await (await fetch("/api/state")).json()); } catch (e) { document.body.classList.add("stale"); $("#dConn").className = "dot bad"; } }, 2000);
+}
+function connect() {
+  if (!window.EventSource) return startPolling();
+  es = new EventSource("/api/stream");
+  es.onmessage = m => { if (poll) { clearInterval(poll); poll = null; } try { render(JSON.parse(m.data)); } catch (e) { console.error(e); } };
+  es.onerror = () => { document.body.classList.add("stale"); $("#dConn").className = "dot bad"; startPolling(); };
+}
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(redraw, 120); });
+setInterval(() => { if (S && S.ledger.close_time) { const age = Math.max(0, Date.now() / 1000 - S.ledger.close_time); $("#tLedger").textContent = `ledger ${S.ledger.index.toLocaleString()} · ${age.toFixed(0)} s ago`; } }, 1000);
+connect();
+</script>
+</body>
+</html>
