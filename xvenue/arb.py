@@ -74,8 +74,13 @@ def hedge_sides(poly_strike: float, kalshi_strike: float) -> tuple[str, str]:
     return ("Up", "No") if kalshi_strike >= poly_strike else ("Down", "Yes")
 
 
-def best_hedge(poly_strike: float, kalshi_strike: float, poly_asks: list[Level], kalshi_asks: list[Level], max_shares: float = 2000.0) -> Hedge | None:
-    """The share count that maximises worst-case profit for one strike, given both ask books (already for the right sides)."""
+POLY_MIN_SHARES = 5.0  # Polymarket's minimum order size on these markets
+
+
+def best_hedge(poly_strike: float, kalshi_strike: float, poly_asks: list[Level], kalshi_asks: list[Level], max_shares: float = 2000.0,
+               budget: float | None = None, min_shares: float = POLY_MIN_SHARES) -> Hedge | None:
+    """The share count that maximises worst-case profit for one strike, given both ask books (already for the right sides).
+    `budget` caps what the shares may cost including fees (the bankroll); `min_shares` is the smallest order the venues accept."""
     ps, ks = hedge_sides(poly_strike, kalshi_strike)
     if not poly_asks or not kalshi_asks:
         return None
@@ -83,9 +88,11 @@ def best_hedge(poly_strike: float, kalshi_strike: float, poly_asks: list[Level],
     cap = min(max_shares, sum(s for _, s in poly_asks), sum(s for _, s in kalshi_asks))
     best: Hedge | None = None
     for n in share_grid(cap):
+        if n < min_shares:
+            continue
         pc, pf, pn = sweep(poly_asks, n, poly_fee)
         kc, kf, kn = sweep(kalshi_asks, n, kalshi_fee)
-        if min(pn, kn) < n - 1e-9:
+        if min(pn, kn) < n - 1e-9 or (budget is not None and pc + kc + pf + kf > budget):
             break
         h = Hedge(ps, ks, kalshi_strike, abs(kalshi_strike - poly_strike), n, pc + kc, pf + kf, top)
         if best is None or h.profit > best.profit:

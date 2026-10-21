@@ -110,6 +110,41 @@ class Ladder(unittest.TestCase):
         self.assertEqual(shares, 100)
 
 
+class Bankroll(unittest.TestCase):
+    def test_a_budget_limits_the_hedge_size(self):
+        poly, kalshi = [(0.30, 1000)], [(0.30, 1000)]
+        big = best_hedge(100, 150, poly, kalshi)
+        small = best_hedge(100, 150, poly, kalshi, budget=30.0)
+        self.assertGreater(big.shares, small.shares)
+        self.assertLessEqual(small.cost + small.fees, 30.0)
+
+    def test_too_small_a_bankroll_cannot_buy_the_minimum_order(self):
+        self.assertIsNone(best_hedge(100, 150, [(0.30, 1000)], [(0.30, 1000)], budget=2.0))  # fewer than Polymarket's 5 shares
+
+    def test_ladder_and_set_respect_the_budget(self):
+        from xvenue.ladder import ladder_arbs, poly_set
+
+        rows = [{"floor_strike": 99.99, "yes_ask_dollars": "0.30", "no_ask_dollars": "0.72", "yes_ask_size_fp": "500", "yes_bid_size_fp": "500"},
+                {"floor_strike": 199.99, "yes_ask_dollars": "0.31", "no_ask_dollars": "0.60", "yes_ask_size_fp": "500", "yes_bid_size_fp": "400"}]
+        a = ladder_arbs(rows, budget=50.0)[0]
+        self.assertLessEqual(a.cost, 50.0)
+        self.assertLess(a.contracts, 400)
+        self.assertEqual(ladder_arbs(rows, budget=0.5), [])
+        p = poly_set([(0.40, 1000)], [(0.45, 1000)], budget=50.0)
+        self.assertLessEqual(p[2] * p[1], 50.0 + 1e-6)
+        self.assertIsNone(poly_set([(0.40, 1000)], [(0.45, 1000)], budget=2.0))
+
+    def test_break_even_edge_barely_depends_on_bankroll_above_a_few_dollars(self):
+        from xvenue.sizing import breakeven_edge
+
+        mid = [breakeven_edge(0.5, b) for b in (100, 1000, 100000)]
+        self.assertLess(max(mid) - min(mid), 0.002)  # under 0.2 cents
+        self.assertGreater(mid[0], 0.03)  # about 3.5 cents at mid prices
+        self.assertIsNone(breakeven_edge(0.5, 2.0))
+        self.assertLess(breakeven_edge(0.5, 1000, poly_maker=True), mid[1] * 0.6)  # a maker leg roughly halves it
+        self.assertLess(breakeven_edge(0.1, 1000), breakeven_edge(0.5, 1000))  # fees are smaller away from 50 cents
+
+
 class Naming(unittest.TestCase):
     def test_polymarket_hourly_slug(self):
         self.assertEqual(poly_slug(datetime(2026, 10, 21, 19, tzinfo=ET)), "bitcoin-up-or-down-october-21-2026-7pm-et")

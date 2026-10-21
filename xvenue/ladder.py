@@ -32,8 +32,9 @@ class LadderArb:
         return self.profit / self.contracts if self.contracts else 0.0
 
 
-def ladder_arbs(rows: list[dict]) -> list[LadderArb]:
-    """Every strike pair (k1 <= k2) at top of book, best first. `rows` are Kalshi market objects with yes/no asks and bid sizes."""
+def ladder_arbs(rows: list[dict], budget: float | None = None) -> list[LadderArb]:
+    """Every strike pair (k1 <= k2) at top of book, best first. `rows` are Kalshi market objects with yes/no asks and bid sizes.
+    `budget` limits the contracts to what the bankroll can pay for, fees included."""
     side = []
     for r in rows:
         try:
@@ -51,7 +52,12 @@ def ladder_arbs(rows: list[dict]) -> list[LadderArb]:
         for k2, _, _, na2, ns2 in side[i:]:
             if na2 <= 0 or na2 >= 1 or ns2 <= 0 or ya1 + na2 >= 1.0:
                 continue  # at or above $1 before fees: cannot work
-            n = min(ys1, ns2)
+            n = float(int(min(ys1, ns2)))
+            if budget is not None:
+                while n >= 1 and n * (ya1 + na2) + kalshi_fee(ya1, n) + kalshi_fee(na2, n) > budget:
+                    n -= 1 if n < 50 else max(1, int(n * 0.05))
+            if n < 1:
+                continue
             fees = kalshi_fee(ya1, n) + kalshi_fee(na2, n)
             a = LadderArb(k1, k2, ya1, na2, n, fees)
             if a.profit > 0:
@@ -59,7 +65,7 @@ def ladder_arbs(rows: list[dict]) -> list[LadderArb]:
     return sorted(out, key=lambda a: -a.profit)
 
 
-def poly_set(up_asks, down_asks, max_shares: float = 2000.0) -> tuple[float, float, float] | None:
+def poly_set(up_asks, down_asks, max_shares: float = 2000.0, budget: float | None = None) -> tuple[float, float, float] | None:
     """(profit, shares, cost per share) of buying Up and Down together at the best size, or None if there is no depth."""
     if not up_asks or not down_asks:
         return None
@@ -76,6 +82,10 @@ def poly_set(up_asks, down_asks, max_shares: float = 2000.0) -> tuple[float, flo
                 left -= take
                 if left <= 0:
                     break
+        if n < 5.0:  # Polymarket's minimum order
+            continue
+        if budget is not None and cost + fees > budget:
+            break
         profit = n - cost - fees
         if best is None or profit > best[0]:
             best = (profit, n, (cost + fees) / n)

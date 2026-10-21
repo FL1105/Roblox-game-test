@@ -3,7 +3,9 @@
 Public market data only: no account, no key, no order code.
 
 ```
+python -m xvenue breakeven                  # how much mispricing each bankroll needs to beat the fees (no network)
 python -m xvenue scan --minutes 30          # watch the current hour on both venues, print and log every snapshot
+python -m xvenue scan --bankrolls 25,500,10000   # what any opportunity found is worth at each bankroll
 python -m unittest tests.test_xvenue
 ```
 
@@ -22,3 +24,10 @@ Polymarket also publishes the strike only after the hour ends, so it cannot be r
 
 ## Why a cross-venue hedge rarely costs under $1
 Up + No at Kalshi strike K >= Kp pays $2 when the price ends between the strikes, so the market charges for that band: fair cost is about `1 + (gap) x (density near the strike)`. With hourly BTC moving about 0.31% (sd, $259), a $100 gap is worth roughly 10 to 15 cents. A hedge only costs under $1 if the venues are mispriced by more than that, plus both fees and both spreads. Observed live: $1.14 to $1.24 all in.
+
+## Bankroll and fees
+Run `python -m xvenue breakeven`. The mispricing a hedge needs to clear fees (how far the two asks sum below $1) is about **3.5 cents per share at mid prices, 3.0 at 30/70, 1.2 to 1.3 near 10/90, and it does not fall as the bankroll grows**: from $100 to $100,000 it moves by under 0.2 cents. The fee is a percentage of the position, so size cannot beat it. What size does change:
+* Below roughly $25, Kalshi rounding each order's fee up to a whole cent, and Polymarket's 5-share minimum order, raise the hurdle or make a trade impossible.
+* Above a few hundred dollars, depth is the limit: the scan sizes each opportunity to the order books, so large bankrolls fill only what is quoted.
+* Posting the Polymarket leg as a resting order pays no Polymarket fee and roughly halves the hurdle (about 1.75 cents at mid prices), but the other leg can move before you complete the hedge, so it is no longer risk-free.
+A larger bankroll earns more *per opportunity* only up to the depth available, and compounds faster if opportunities are frequent. It does not make a thin opportunity profitable.

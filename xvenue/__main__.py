@@ -1,4 +1,5 @@
 """Usage:
+    python -m xvenue breakeven              # how much mispricing each bankroll needs to beat the fees (no network)
     python -m xvenue scan --minutes 30      # watch the current hour on both venues; log every snapshot to data/xvenue/scan.jsonl
 
 Read-only: public market data only, no account, no keys, no order code."""
@@ -39,11 +40,21 @@ def snapshot(poly, strikes, strike: float, margin: float) -> tuple[list[Hedge], 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="xvenue", description="Polymarket vs Kalshi hourly BTC hedge scanner (read-only)")
-    p.add_argument("cmd", choices=("scan",))
+    p.add_argument("cmd", choices=("scan", "breakeven"))
     p.add_argument("--minutes", type=float, default=30)
     p.add_argument("--every", type=float, default=5.0, help="seconds between snapshots")
+    p.add_argument("--bankrolls", default="25,100,500,2500,10000", help="dollars per hedge to size opportunities for (comma separated)")
     p.add_argument("--margin", type=float, default=60.0, help="skip Kalshi strikes closer than this many dollars to Polymarket's strike in Kalshi terms (default 60: the Binance-vs-Coinbase basis has sd $14)")
     args = p.parse_args(argv)
+    bankrolls = [float(x) for x in args.bankrolls.split(",") if x]
+    if args.cmd == "breakeven":
+        from .sizing import fee_table
+
+        print("Gross edge per share (cents: how far the two asks must sum below $1) needed to break even after fees, taker on both venues:\n")
+        print(fee_table())
+        print("\nWith the Polymarket leg posted as a maker order (no Polymarket fee, but the other leg can move first):\n")
+        print(fee_table(poly_maker=True))
+        return 0
     LOG.parent.mkdir(parents=True, exist_ok=True)
     end = time.time() + args.minutes * 60
     n = naive = allin = ladder_hits = set_hits = 0
@@ -79,6 +90,14 @@ def main(argv: list[str] | None = None) -> int:
                 ladder, pset = [], None
             ladder_hits += bool(ladder)
             set_hits += bool(pset and pset[0] > 0)
+            if ladder or (pset and pset[0] > 0):
+                up_a, down_a = poly_asks(poly.up_token), poly_asks(poly.down_token)
+                for b in bankrolls:  # what this opportunity is worth at each bankroll
+                    la = ladder_arbs(rows, budget=b)
+                    ps = poly_set(up_a, down_a, budget=b)
+                    best_b = max([x.profit for x in la[:1]] + ([ps[0]] if ps else []) + [0.0])
+                    if best_b > 0:
+                        print(f"      bankroll ${b:>8,.0f}: {best_b:+8.2f} USD ({best_b / b * 100:+.2f}% on the bankroll)")
             if ladder:
                 a = ladder[0]
                 print(f"   !! KALSHI LADDER: Yes {a.low:,.0f} @ {a.yes_ask:.2f} + No {a.high:,.0f} @ {a.no_ask:.2f}: {a.per_contract:+.4f}/contract x {a.contracts:.0f} = {a.profit:+.2f} USD after fees")
