@@ -410,6 +410,10 @@ $("#form").onsubmit = async ev => {
   try { await post("/api/settings", body); $("#formErr").textContent = ""; $("#settings").open = false; } catch (e) { $("#formErr").textContent = e.message; }
 };
 
+// the settings panel floats over the page: Escape or a click elsewhere closes it
+addEventListener("keydown", e => { if (e.key === "Escape") $("#settings").open = false; });
+addEventListener("click", e => { const d = $("#settings"); if (d.open && !d.contains(e.target)) d.open = false; });
+
 // ---- live stream with polling fallback ----------------------------------------------------------------------------
 let es = null, poll = null;
 function startPolling() {
