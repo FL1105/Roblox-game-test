@@ -45,7 +45,8 @@ Status key: DONE / NOW / NEXT / NEEDS YOU / ONLY IF EARNED
 ### XRPL arbitrage bot (`xrpl_arb/`)
 - DONE   Scanner, pool+book liquidity model (checked against the ledger's own `simulate`), shared leg-by-leg trade policy, paper executor, live dashboard, opt-in live executor (not run with real funds), 75 tests. See `xrpl_arb/README.md`.
 - DONE   First real-data run: 173 mainnet ledgers, 1,720 cycle evaluations, none profitable, best edge -1.4 bps (XRP -> RLUSD -> XRP).
-- NOW    Replay real ledger history (full-history servers keep every past book and pool) to see how often, how big and how long-lived any edge has been, instead of waiting live.
+- DONE   History replay (`python -m xrpl_arb.history`). Last 24 h of mainnet, 740 sampled ledgers (148 windows): no cycle was ever profitable. Closest was XRP -> RLUSD -> XRP: median -10.8 bps, 90th percentile -6.8, best -0.0. Every other cycle was at least -26 bps. Zero paper trades. Sampling can miss a gap lasting only 1-2 ledgers.
+- NEXT   Longer replay (72 h) and a contiguous read (every ledger) of any volatile hour, since sampling can miss short gaps.
 - NEXT   Record every ledger's best edges to a file for long unattended runs.
 - NEEDS YOU  Live trading stays off until a replay or a long paper run shows an edge that survives the late-leg model.
 
