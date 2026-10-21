@@ -593,6 +593,19 @@ class History(unittest.TestCase):
         self.assertEqual(state.stats["windows_skipped"], len([s for s in starts if (s - 5000) // 5 % 2 == 0]))
         self.assertEqual(len(samples), (len(starts) - state.stats["windows_skipped"]) * 5 * 10)
 
+    def test_a_ledger_error_from_the_server_skips_the_window(self):
+        from xrpl_arb.rpc import RpcError
+
+        class Erroring(DemoFeed):
+            def snapshot(self, ledger, close_time):
+                if (ledger - 5000) // 5 % 2 == 0:
+                    raise RpcError("lgrNotFound", "ledger not in history")
+                return super().snapshot(ledger, close_time)
+
+        cfg, starts, samples, state, _ = self.replay(Erroring)
+        self.assertGreater(state.stats["windows_skipped"], 0)
+        self.assertGreater(len(samples), 0)
+
     def test_cli_rejects_windows_too_short_for_the_longest_trade(self):
         from xrpl_arb.history import main
 

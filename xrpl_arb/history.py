@@ -20,7 +20,7 @@ from .bot import Bot
 from .config import DEFAULT_RPC, Config
 from .feed import Snapshot
 from .paper import PaperExecutor
-from .rpc import Rpc
+from .rpc import Rpc, RpcError
 from .state import BotState
 
 LEDGERS_PER_HOUR = 3600 / 3.9  # the ledger closes every 3 to 4 seconds
@@ -66,7 +66,7 @@ def replay(cfg: Config, feed, starts: list[int], window: int, workers: int = 2, 
 def _safe_fetch(feed, start, window):
     try:
         return fetch_window(feed, start, window)
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, RpcError):  # a window the server cannot give us is skipped, not fatal
         return None
 
 

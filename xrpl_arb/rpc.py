@@ -11,7 +11,7 @@ import urllib.request
 COOL_OFF_S = 20.0  # a server that just failed is tried last for this long; each further failure in a row doubles it
 MAX_COOL_OFF_S = 600.0
 RETRY_PAUSE_S = 0.25
-TRANSIENT = ("slowDown", "tooBusy", "noNetwork", "noCurrent", "noClosed")
+TRANSIENT = ("slowDown", "tooBusy", "noNetwork", "noCurrent", "noClosed", "failedToForward")
 
 
 class RpcError(Exception):
