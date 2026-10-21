@@ -102,6 +102,7 @@ class Parsing(unittest.TestCase):
     def test_prices_in_cents_or_dollars(self):
         self.assertEqual(cents({"close": 56}, "close"), 56.0)
         self.assertAlmostEqual(cents({"close_dollars": "0.5600"}, "close"), 56.0)
+        self.assertAlmostEqual(cents({"close": "0.6100"}, "close"), 61.0)  # historical endpoints: dollar string, plain key
         self.assertIsNone(cents({"close": None}, "close"))
         self.assertIsNone(cents(None, "close"))
 
@@ -109,6 +110,9 @@ class Parsing(unittest.TestCase):
         c = parse_candle({"end_period_ts": 1200, "yes_bid": {"close": 40}, "yes_ask": {"close_dollars": "0.45"},
                           "price": {"close": None}, "volume": 7})
         self.assertEqual((c.end_ts, c.bid, c.ask, c.last, c.volume), (1200, 40.0, 45.0, None, 7.0))
+        old = parse_candle({"end_period_ts": 1200, "yes_bid": {"close": "0.6100"}, "yes_ask": {"close": "0.6200"},
+                            "price": {"close": "0.6100", "previous": None}, "volume": "162679.92"})
+        self.assertEqual((old.bid, old.ask, old.last), (61.0, 62.0, 61.0))
         m = parse_market({"ticker": "X", "close_time": "2026-10-20T08:30:00Z", "result": "yes", "floor_strike": 100000.5})
         self.assertEqual((m.ticker, m.yes_won, m.strike), ("X", True, 100000.5))
         self.assertIsNone(parse_market({"ticker": "X", "close_time": "2026-10-20T08:30:00Z", "result": ""}))
@@ -128,6 +132,12 @@ class Spot(unittest.TestCase):
         self.assertEqual(s.at(120), 12.0)
         self.assertEqual(s.at(0), 10.0)  # no earlier candle: falls back to the open that starts there
         self.assertIsNone(s.at(600))
+
+    def test_reference_is_the_mean_of_the_minute_before_the_boundary(self):
+        s = SpotSeries({0: (10.0, 12.0), 60: (12.0, 20.0)})
+        self.assertEqual(s.avg_minute_before(60), 11.0)
+        self.assertEqual(s.avg_minute_before(120), 16.0)
+        self.assertIsNone(s.avg_minute_before(300))
 
     def test_volatility_of_a_constant_growth_path(self):
         self.assertAlmostEqual(self.series().minute_vol(150 * 60, 60), math.log(1.001), places=6)
@@ -161,10 +171,10 @@ class Build(unittest.TestCase):
         m = Market("T", 20 * 60 + 900, True, None)  # window starts at 1200 s, entry at 1200 + 780
         out, _ = build_samples([m], lambda _: self.candles(end=m.close_ts - 120), spot, lead_s=120)
         s = out[0]
-        self.assertEqual(s.spot_open, spot.at(1200))
+        self.assertEqual(s.spot_open, spot.avg_minute_before(1200))
         self.assertEqual(s.spot_entry, spot.at(1200 + 780))
         self.assertEqual(s.spot_prev, spot.at(1200 + 780 - 180))
-        self.assertEqual(s.spot_end, spot.at(m.close_ts))
+        self.assertEqual(s.spot_end, spot.avg_minute_before(m.close_ts))
 
 
 def synthetic_worlds(n=3000, seed=7):

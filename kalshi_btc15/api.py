@@ -51,14 +51,17 @@ def get_json(url: str, params: dict | None = None, retries: int = 6, pause: floa
 
 
 def cents(node, key: str) -> float | None:
-    """A price field as float cents, from {key: 56} or {key + "_dollars": "0.5600"}; None when absent or null."""
+    """A price field as float cents. Three shapes occur: {key + "_dollars": "0.5600"} (live), {key: "0.5600"}
+    (historical endpoints: a dollar string under the plain key) and {key: 56} (integer cents). None when absent."""
     if not isinstance(node, dict):
         return None
     dollars = node.get(key + "_dollars")
     if dollars not in (None, ""):
         return float(dollars) * 100.0
     raw = node.get(key)
-    return None if raw in (None, "") else float(raw)
+    if raw in (None, ""):
+        return None
+    return float(raw) * 100.0 if isinstance(raw, str) else float(raw)
 
 
 def iso_ts(text: str) -> int:

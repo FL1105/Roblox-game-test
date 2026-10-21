@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("probe", help="print raw API responses to check assumptions")
     bt = sub.add_parser("backtest", help="download data and write the report")
-    bt.add_argument("--days", type=int, default=180)
+    bt.add_argument("--days", type=int, default=400, help="how far back to go (default 400: the whole history, which starts 2025-12-10)")
     bt.add_argument("--leads", type=lambda t: [int(x) for x in t.split(",")], default=[120, 180, 240, 300],
                     help="seconds before close to enter; the first is the pre-registered one (default 120,180,240,300)")
     bt.add_argument("--contracts", type=int, default=10)

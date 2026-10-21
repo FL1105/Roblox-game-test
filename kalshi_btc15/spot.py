@@ -56,6 +56,11 @@ class SpotSeries:
         nxt = self.minutes.get(ts)
         return nxt[0] if nxt else None
 
+    def avg_minute_before(self, ts: int) -> float | None:
+        """Proxy for the average of the 60 seconds before a boundary (Kalshi's reference): the mean of that minute's open and close."""
+        candle = self.minutes.get(ts - 60)
+        return (candle[0] + candle[1]) / 2.0 if candle else None
+
     def minute_vol(self, end_ts: int, n: int = 60) -> float | None:
         """Per-minute standard deviation of log returns over the last n minutes up to a boundary, zero-mean.
 

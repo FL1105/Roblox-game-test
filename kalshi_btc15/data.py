@@ -28,7 +28,7 @@ class Sample:
     ask_prev: float | None
     tau_min: float               # minutes left at entry
     strike: float | None         # Kalshi's reference price (index based)
-    spot_open: float | None      # BTC at the window start / MOM_MIN before entry / at entry / at close
+    spot_open: float | None      # BTC: 60 s average before the window start / MOM_MIN before entry / at entry / 60 s average before close
     spot_prev: float | None
     spot_entry: float | None
     spot_end: float | None
@@ -66,8 +66,8 @@ def build_samples(markets: list[Market], load_candles: Callable[[Market], list[C
         start = m.close_ts - WINDOW_S
         spot_vals = (None,) * 5
         if spot is not None:
-            spot_vals = (spot.at(start), spot.at(entry_ts - 60 * MOM_MIN), spot.at(entry_ts), spot.at(m.close_ts),
-                         spot.minute_vol(entry_ts, VOL_MIN))
+            spot_vals = (spot.avg_minute_before(start), spot.at(entry_ts - 60 * MOM_MIN), spot.at(entry_ts),
+                         spot.avg_minute_before(m.close_ts), spot.minute_vol(entry_ts, VOL_MIN))
             if None in spot_vals:
                 skipped["no BTC data (kept for Kalshi-only strategies)"] += 1
         out.append(Sample(

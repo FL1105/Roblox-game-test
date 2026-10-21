@@ -1,0 +1,24 @@
+AMENDMENT 1 to PREREGISTERED.txt
+Written 2026-10-21, after `python -m kalshi_btc15 probe` and before any backtest was run.
+What was read: the series object, the rules text of one settled market, three candles of one market, three Coinbase
+candles, and the page-1 headers of the historical list. No outcome statistics of any kind have been computed.
+
+Everything in PREREGISTERED.txt stands except the two changes below.
+
+1. UNIVERSE: the entire available history instead of the last 180 days (the user asked to go "quite far").
+   The series' history starts 2025-12-10; the newest 20 minutes are still excluded. The in-sample / out-of-sample
+   split (first 60% / last 40% by close time) and the decision rule are unchanged, and now apply to that longer span.
+
+2. START REFERENCE: the market's rules text says YES wins if "the simple average of the sixty seconds of BRTI before
+   [close] is at least the simple average of the sixty seconds of BRTI before [open]". The reference is therefore a
+   60-second average, not a point price. Wherever PREREGISTERED.txt says "spot at window start" (trend_open, the
+   model's gap, the outcome sanity check) it now means the Coinbase proxy for that average: the mean of the open and
+   the close of the 1-minute candle ending at the window start. The settlement side was already modelled as a
+   60-second average and is confirmed by the rules text. Entry price, momentum references and the 3-cent edge are
+   unchanged.
+
+Confirmed by the probe, no change: fee_type quadratic, multiplier 1 (the 0.07 schedule); results are the market's own
+recorded `result`; 1-minute candles carry yes_bid / yes_ask closes.
+
+Also fixed, not a design change: the historical endpoints return prices as dollar strings under plain keys
+("close": "0.6100"); the parser read these as cents. It is now covered by a test.
