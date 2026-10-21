@@ -1,0 +1,23 @@
+AMENDMENT 2 to PREREGISTERED.txt (and Amendment 1)
+Written 2026-10-21, after the candle download was throttled and before any backtest result was computed.
+What was read since Amendment 1: file counts only (how many markets' candles are cached, by month). No prices,
+outcomes or statistics.
+
+WHY: Kalshi throttles to about 1 market per second sustained for the per-market historical candle calls. The full
+history (29,366 markets) would take ~8 hours; 7,628 markets were downloaded in 2 hours before the job reached its
+time limit. Recent markets (after 2026-08-21) are served by a batch call and downloaded quickly.
+
+CHANGE: the universe for REPORT 1 is every settled KXBTC15M market whose candles were already downloaded when the
+run was launched (`--cached-only`). That is a rule about the download queue, not about outcomes: the queue ran
+oldest-first for historical markets and in time order for recent ones, so the set is
+  2025-12 (all, 1,566 markets), 2026-01 (first 245), 2026-08-21 to 2026-10-21 (all, ~5,800).
+February to 2026-08-20 (~22,000 markets) is NOT covered, and the report states this in its Data section.
+
+REPORT 1 IS PRELIMINARY. Nothing else in PREREGISTERED.txt or Amendment 1 changes: same five strategies, same fill and
+fee model, same 60/40 split by close time (so the in-sample part is mostly December/January plus late August, the
+out-of-sample part is September/October), same decision rule. Because the covered periods are not contiguous and
+BTC conditions differ between them, a verdict from Report 1 is weaker evidence than one from the full history.
+
+IF MORE DATA IS DOWNLOADED LATER: the final verdict is the single run on the whole set, with the same rule and the
+same split rule re-applied to it. Report 1 may not be used to pick, drop or re-tune any strategy, threshold or
+entry time for that run. Both reports are kept.

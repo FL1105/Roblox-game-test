@@ -18,6 +18,16 @@ PRODUCT = "BTC-USD"
 CHUNK_MIN = 300  # Coinbase returns at most 300 candles per request
 
 
+def needed_chunks(close_times, before_s: int = 4800, after_s: int = 120) -> list[int]:
+    """Aligned chunk starts covering [close - before_s, close + after_s] for each market: the 60-minute volatility
+    lookback before the latest entry (300 s before close) plus the start reference and the settlement minute."""
+    span = CHUNK_MIN * 60
+    out: set[int] = set()
+    for t in close_times:
+        out.update(range((t - before_s) // span * span, (t + after_s) // span * span + 1, span))
+    return sorted(out)
+
+
 def iso(ts: int) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -29,11 +39,10 @@ class SpotSeries:
         self.minutes = minutes
 
     @classmethod
-    def fetch(cls, start_ts: int, end_ts: int, product: str = PRODUCT, progress=None) -> "SpotSeries":
+    def fetch_chunks(cls, chunks: list[int], product: str = PRODUCT, progress=None) -> "SpotSeries":
+        """Download (or read from cache) the given aligned chunks; see needed_chunks()."""
         span = CHUNK_MIN * 60
         minutes: dict[int, tuple[float, float]] = {}
-        first = start_ts // span * span
-        chunks = range(first, end_ts, span)
         for i, chunk in enumerate(chunks, 1):
             path = CACHE / "spot" / f"{product}_{chunk}.json"
             rows = read_cache(path)

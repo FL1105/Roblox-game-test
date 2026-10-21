@@ -74,15 +74,23 @@ def backtest(args) -> int:
     if not markets:
         say("no settled markets in range")
         return 1
-    say(f"{len(markets)} markets; downloading candles (cached) ...")
-    api.prefetch_candles(api.SERIES, markets, progress=lambda i, n, bad: say(f"  candles {i}/{n} (failed {bad})"))
+    in_range = len(markets)
+    if args.cached_only:
+        markets = [m for m in markets if api._candle_path(m.ticker).exists()]
+        say(f"{in_range} markets in range; analysing the {len(markets)} whose candles are already downloaded")
+    else:
+        say(f"{in_range} markets; downloading candles (cached) ...")
+        api.prefetch_candles(api.SERIES, markets, progress=lambda i, n, bad: say(f"  candles {i}/{n} (failed {bad})"))
+    if not markets:
+        say("no markets with candles")
+        return 1
 
     spot = None
     if not args.no_spot:
         say("downloading BTC-USD minutes from Coinbase (cached) ...")
         try:
-            spot = spot_mod.SpotSeries.fetch(markets[0].close_ts - 2 * 3600, markets[-1].close_ts + 300,
-                                             progress=lambda i, n: say(f"  spot chunks {i}/{n}"))
+            spot = spot_mod.SpotSeries.fetch_chunks(spot_mod.needed_chunks(m.close_ts for m in markets),
+                                                    progress=lambda i, n: say(f"  spot chunks {i}/{n}"))
         except api.ApiError as e:
             say(f"BTC data unavailable ({e}); running the Kalshi-only strategies")
 
@@ -90,13 +98,15 @@ def backtest(args) -> int:
     for lead in args.leads:
         by_lead[lead], sk = build_samples(markets, lambda m: api.candles(api.SERIES, m), spot, lead_s=lead)
         skipped = skipped if skipped is not None else sk
+    if in_range > len(markets):
+        skipped["settled in range but not downloaded (--cached-only)"] = in_range - len(markets)
     primary = by_lead[args.leads[0]]
     if not primary:
         say("no usable samples")
         return 1
 
     day = datetime.now(timezone.utc).strftime("%Y%m%d")
-    report = render(primary, skipped, by_lead, cfg, len(markets), f"Kalshi KXBTC15M late-window backtest ({args.days} days to {day})")
+    report = render(primary, skipped, by_lead, cfg, in_range, f"Kalshi KXBTC15M late-window backtest ({args.days} days to {day})")
     out = Path(args.out) if args.out else Path(__file__).with_name("reports") / f"report_{day}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report)
@@ -116,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--contracts", type=int, default=10)
     bt.add_argument("--edge", type=float, default=3.0, help="model_edge minimum edge in cents (pre-registered: 3)")
     bt.add_argument("--fee-multiplier", type=float, default=None, help="override the series' fee multiplier")
+    bt.add_argument("--cached-only", action="store_true", help="analyse only markets whose candles are already cached; download nothing for Kalshi")
     bt.add_argument("--no-spot", action="store_true", help="skip Coinbase; only the Kalshi-only strategies run")
     bt.add_argument("--refresh", action="store_true", help="re-list markets instead of using the cached list")
     bt.add_argument("--out", help="report path (default kalshi_btc15/reports/report_<date>.md)")

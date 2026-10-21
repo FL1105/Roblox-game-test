@@ -6,7 +6,7 @@ from collections import Counter
 from kalshi_btc15.api import Candle, Market, candle_batches, cents, parse_candle, parse_market
 from kalshi_btc15.data import MOM_MIN, Sample, build_samples
 from kalshi_btc15.report import ALPHA, preregistered, render, verdict
-from kalshi_btc15.spot import SpotSeries
+from kalshi_btc15.spot import SpotSeries, needed_chunks
 from kalshi_btc15.stats import longest_run, max_drawdown, norm_cdf, summarize, wilson
 from kalshi_btc15.strategies import (CONTROLS, PREREGISTERED, Config, Trade, effective_minutes, fee_cents, model_edge,
                                      model_p_up, run, take, trend_open)
@@ -147,6 +147,13 @@ class Spot(unittest.TestCase):
         self.assertEqual(s.at(120), 12.0)
         self.assertEqual(s.at(0), 10.0)  # no earlier candle: falls back to the open that starts there
         self.assertIsNone(s.at(600))
+
+    def test_needed_chunks_cover_the_lookback_and_the_close(self):
+        span = 300 * 60
+        close = 10 * span + 600  # 10 minutes into a chunk: the 80-minute lookback reaches back into the previous one
+        chunks = needed_chunks([close])
+        self.assertEqual(chunks, [9 * span, 10 * span])
+        self.assertEqual(needed_chunks([close, close + 900]), chunks)  # neighbours share chunks, no duplicates
 
     def test_reference_is_the_mean_of_the_minute_before_the_boundary(self):
         s = SpotSeries({0: (10.0, 12.0), 60: (12.0, 20.0)})
