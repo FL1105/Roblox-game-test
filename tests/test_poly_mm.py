@@ -100,6 +100,34 @@ class Quoting(unittest.TestCase):
         self.assertEqual(r.up, 10.0)
 
 
+class BtcFair(unittest.TestCase):
+    class Fake:
+        def __init__(self, spot, strike):
+            self.spot, self.strike = spot, strike
+
+        def price(self, t):
+            return self.strike if t <= 1000 else self.spot
+
+        def vol_per_min(self, t):
+            return 0.0006
+
+    def test_probability_is_half_at_the_money_and_rises_with_spot(self):
+        from poly_mm.btc import up_probability
+
+        self.assertAlmostEqual(up_probability(100, 100, 120, 0.0006), 0.5)
+        self.assertGreater(up_probability(100.1, 100, 120, 0.0006), 0.85)
+        self.assertLess(up_probability(99.9, 100, 120, 0.0006), 0.15)
+        self.assertGreater(up_probability(100.1, 100, 10, 0.0006), up_probability(100.1, 100, 200, 0.0006))  # less time, more certain
+
+    def test_btc_fair_moves_the_bids_before_the_market_trades(self):
+        q = Quoter(delta=0.02, size=50.0, refresh_s=10, latency_s=0.0, stop_before_s=0.0, fair="btc", queue=1.0)
+        # BTC is far above the strike, so fair Up is ~1 and the Down bid sits at the 0.01 floor or off: a Down sale at 0.30 fills nothing
+        r = simulate(M, [trade(1100, 1, "SELL", 0.30, 5)], q, self.Fake(spot=101, strike=100))
+        self.assertEqual(r.fills, 0)
+        # with fair at 0.5 the same sale does fill the 0.48 bid
+        self.assertEqual(simulate(M, [trade(1100, 1, "SELL", 0.30, 5)], q, self.Fake(spot=100, strike=100)).down, 5.0)
+
+
 class Summary(unittest.TestCase):
     def test_summary_numbers(self):
         a = simulate(M, [trade(1100, 0, "SELL", 0.40, 10)], STATIC)  # wins 5.2

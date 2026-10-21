@@ -12,6 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 
+from .btc import Btc, fetch_range
 from .markets import Market, load_market, window_starts
 from .model import Quoter, Summary, simulate, summarize
 from .tape import fetch_tape
@@ -48,24 +49,25 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "fetch":
         print(f"tapes cached under data/poly/tape/ ({sum(len(t) for _, t in rows):,} trades)")
         return 0
+    btc = Btc(fetch_range(rows[0][0].start - 3600, rows[-1][0].end + 60))
     cut = len(rows) // 2
     train, test = rows[:cut], rows[cut:]
     print(f"train: first {len(train)} markets, test: last {len(test)} markets\n")
     base = Quoter()
     grid = [("tweet: static 0.48/0.48, whole window", replace(base, fair="static", refresh_s=1e9, stop_before_s=0, latency_s=0))]
-    for delta, refresh, skew in itertools.product((0.02, 0.03, 0.05), (15, 30), (0.0, 0.0002, 0.0006)):
-        grid.append((f"follow d={delta:.2f} refresh={refresh}s skew={skew}", replace(base, delta=delta, refresh_s=refresh, stop_before_s=60, skew=skew)))
+    for fair, delta, refresh, skew in itertools.product(("last", "btc"), (0.02, 0.03, 0.05), (5, 15), (0.0, 0.0006)):
+        grid.append((f"{fair} d={delta:.2f} refresh={refresh}s skew={skew}", replace(base, fair=fair, delta=delta, refresh_s=refresh, stop_before_s=30, skew=skew)))
     print("TRAIN (queue=0.3)\n" + HEAD)
     scored = []
     for name, q in grid:
-        s = summarize([simulate(m, t, q) for m, t in train])
+        s = summarize([simulate(m, t, q, btc) for m, t in train])
         scored.append((s.pnl, name, q))
         print(fmt(name, s))
     best = max(scored, key=lambda x: x[0])
     print(f"\nbest on train: {best[1]}\n\nTEST (never used to choose anything)\n" + HEAD)
     for name, q in [grid[0][:2], (best[1], best[2])]:
         for queue in (0.0, 0.3, 1.0):
-            print(fmt(f"{name[:34]} queue={queue}", summarize([simulate(m, t, replace(q, queue=queue)) for m, t in test])))
+            print(fmt(f"{name[:34]} queue={queue}", summarize([simulate(m, t, replace(q, queue=queue), btc) for m, t in test])))
     return 0
 
 

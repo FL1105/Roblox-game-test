@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from .btc import up_probability
 from .markets import Market
 from .tape import Trade
 
@@ -29,7 +30,7 @@ class Quoter:
     start_after_s: float = 0.0  # no quoting in the first seconds
     skew: float = 0.0  # price units each share of imbalance moves the bids (0.0002 = 50 shares of imbalance moves them one cent)
     max_imbalance: float = 200.0  # stop bidding the heavier side beyond this many shares more than the other
-    fair: str = "last"  # "last" trade-implied Up price, or "static" 0.50 (the tweet's version)
+    fair: str = "last"  # "last" trade-implied Up price, "btc" the price implied by Coinbase BTC, or "static" 0.50 (the tweet's version)
     queue: float = 0.3  # share of pressure at exactly our price that fills us
 
 
@@ -60,7 +61,7 @@ def floor_tick(x: float) -> float:
     return math.floor(x / TICK + 1e-9) * TICK
 
 
-def simulate(m: Market, trades: list[Trade], q: Quoter) -> Result:
+def simulate(m: Market, trades: list[Trade], q: Quoter, btc=None) -> Result:
     res = Result(m.slug, winner=m.winner)
     events = pressure([t for t in trades if m.start - 1 <= t.t <= m.end])
     up_prices = [(t.t, t.price if t.outcome == 0 else 1 - t.price) for t in trades if t.t <= m.end]
@@ -75,6 +76,10 @@ def simulate(m: Market, trades: list[Trade], q: Quoter) -> Result:
                 last_up = up_prices[j][1]
                 j += 1
             fair = last_up if q.fair == "last" else 0.5
+            if q.fair == "btc" and btc is not None:
+                spot, strike = btc.price(next_ref), btc.price(m.start)
+                if spot and strike:
+                    fair = up_probability(spot, strike, m.end - next_ref, btc.vol_per_min(next_ref))
             lean = q.skew * (res.up - res.down)  # long Up: bid less for more Up, more for Down
             bu, bd = floor_tick(fair - q.delta - lean), floor_tick(1 - fair - q.delta + lean)
             bid = [bu if 0.01 <= bu <= 0.98 else 0.0, bd if 0.01 <= bd <= 0.98 else 0.0]
