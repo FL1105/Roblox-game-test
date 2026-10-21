@@ -68,6 +68,22 @@ Not checked:
 - Trades above 100 XRP (the test wallet could not fund path-finding above that).
 - Whether pools pay the issuer's transfer fee. The model charges it (conservative).
 
+## What a live run found (Oct 2026, one public server, 98 pairs, 4-leg limit, 25 XRP cap, 0.001 XRP / 0.25% thresholds)
+
+Two runs, 29 scans in total (about 12 minutes of ledgers). Treat it as a small sample, not a measurement of the market.
+
+- 27 scans found nothing that passes the thresholds. 24 of 29 scans did have a cycle that pays before the 0.0001 XRP
+  fee, but only by 0.00003 to 0.00015 XRP at its best size (0.007 to 0.4 XRP in): fee-sized dust.
+- 2 scans (both in the second run) each showed a burst of overlapping cycles that passed: 5 cycles at ledger
+  107798500 (0.0011 to 0.0015 XRP, 2.4% to 3.1% on about 0.05 XRP) and 10 at ledger 107798590 (up to 0.0066 XRP, 2.6%
+  on 0.26 XRP), through XRPX, BITx, PLX and GRIM. The cycles in a burst share legs, so each burst is one mispricing, not
+  15 separate profits. Both were gone at the next scan, 7 to 8 ledgers later.
+- Cross-check of the first burst against the engine, pinned to that ledger: the engine also found routes to BITx about 2%
+  cheaper than the direct pool, so the mispricing looks real, but its cheapest route cost about 0.7% more than the model's.
+  The model is optimistic here, on tiny pools (one held 0.78 XRPX at a 0% fee).
+- That is the same size of prize the lab.bwif.meme feed reports (median 0.0046 XRP per cycle), which is why polling at
+  this speed is the wrong tool for capturing it.
+
 ## Limits you should know about
 
 - **It polls.** A 98-pair sweep takes about 45 s (about 12 ledgers). A bot that sees each ledger as it closes (a
