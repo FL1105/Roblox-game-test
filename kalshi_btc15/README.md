@@ -8,13 +8,16 @@ data, no API key, no orders.** Standard library only, Python 3.10+.
 python -m kalshi_btc15 probe                    # print the raw API responses this code relies on (run this first)
 python -m kalshi_btc15 backtest --days 400      # download (cached) and write kalshi_btc15/reports/report_<date>.md
 python -m kalshi_btc15 backtest --no-spot       # Kalshi only, no Coinbase (only the Kalshi-price strategies run)
-python -m unittest tests.test_kalshi_btc15      # 28 tests, no network needed
+python -m kalshi_btc15 fetch                    # v2: download the sampled holdout (every 4th market, 2026-01-04 to 2026-08-21)
+python -m kalshi_btc15 stack                    # v2: fit the stacked model on DEV only (the holdout stays unread)
+python -m kalshi_btc15 stack --score-holdout    # v2: score the holdout (pre-registered: once)
+python -m unittest tests.test_kalshi_btc15 tests.test_kalshi_btc15_stack   # 40 tests, no network needed
 ```
 
 Needs outbound HTTPS to `api.elections.kalshi.com` (markets, candles) and `api.exchange.coinbase.com` (BTC-USD
 minutes). Downloads are cached under `kalshi_btc15/cache/` (git-ignored), so a rerun only fetches what is new.
 
-**Read `PREREGISTERED.txt` (and `PREREGISTERED_amendment1.txt`) first.** It fixes the five strategies, the fill and fee model, the in-sample / out-of-sample
+**Read `PREREGISTERED.txt`, its two amendments and `PREREGISTERED_v2.txt` first.** It fixes the five strategies, the fill and fee model, the in-sample / out-of-sample
 split and the decision rule before any result exists. The report applies that rule mechanically; the exploratory
 sections (price buckets, threshold sweep, entry-time sweep, Brier scores) never produce a verdict.
 
@@ -24,6 +27,7 @@ sections (price buckets, threshold sweep, entry-time sweep, Brier scores) never 
 | `spot.py` | Coinbase BTC-USD minute candles and trailing volatility |
 | `data.py` | one `Sample` per market as seen at the entry moment (nothing after it except the result) |
 | `strategies.py` | the five strategies, two controls, the fee and the fill |
+| `stack.py` | v2 model: the market's mid-price as the base plus four features, logistic fit, holdout tests (see `PREREGISTERED_v2.txt`) |
 | `stats.py`, `report.py` | summaries, confidence intervals, drawdown, losing streaks, the Markdown report |
 
 Candles are 1-minute, so "12:30 into the window" cannot be observed; the entry is the quote at the 13:00 mark
