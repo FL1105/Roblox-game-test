@@ -115,10 +115,30 @@ def backtest(args) -> int:
     return 0
 
 
+def day_ts(text: str) -> int:
+    return int(datetime.strptime(text, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+
+
+def fetch(args) -> int:
+    """Download candles for every Nth settled market in [from, to): a deterministic sample that looks at no prices."""
+    lo, hi = day_ts(args.start), day_ts(args.end)
+    in_range = [m for m in api.settled_markets() if lo <= m.close_ts < hi]
+    picked = in_range[::args.every]
+    todo = sum(not api._candle_path(m.ticker).exists() for m in picked)
+    say(f"{len(in_range)} settled markets in [{args.start}, {args.end}); every {args.every}th = {len(picked)}; {todo} still to download")
+    api.prefetch_candles(api.SERIES, picked, progress=lambda i, n, bad: say(f"  candles {i}/{n} (failed {bad})"))
+    say("done")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m kalshi_btc15", description=__doc__.split("\n\n")[1])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("probe", help="print raw API responses to check assumptions")
+    fe = sub.add_parser("fetch", help="download candles for every Nth market in a date range (the v2 holdout sample)")
+    fe.add_argument("--start", default="2026-01-04", help="first close date, UTC (default 2026-01-04)")
+    fe.add_argument("--end", default="2026-08-21", help="close date it stops before, UTC (default 2026-08-21)")
+    fe.add_argument("--every", type=int, default=4, help="take every Nth market by close time (default 4)")
     bt = sub.add_parser("backtest", help="download data and write the report")
     bt.add_argument("--days", type=int, default=400, help="how far back to go (default 400: the whole history, which starts 2025-12-10)")
     bt.add_argument("--leads", type=lambda t: [int(x) for x in t.split(",")], default=[120, 180, 240, 300],
@@ -131,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--refresh", action="store_true", help="re-list markets instead of using the cached list")
     bt.add_argument("--out", help="report path (default kalshi_btc15/reports/report_<date>.md)")
     args = ap.parse_args(argv)
-    return probe() if args.cmd == "probe" else backtest(args)
+    return {"probe": lambda a: probe(), "fetch": fetch, "backtest": backtest}[args.cmd](args)
 
 
 if __name__ == "__main__":
