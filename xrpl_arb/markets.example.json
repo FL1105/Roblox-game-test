@@ -1,0 +1,8 @@
+{
+  "_note": "Illustrative only. The addresses are checksum-valid but confirm each issuer yourself before trusting a market. Every asset is paired with XRP and with every other asset, so keep the list short: n assets cost (n+1)*n book requests plus (n+1)*n/2 pool requests per scan.",
+  "assets": [
+    "USD+rvYAfWj5gh67oV6fW32ZzP3Aw4Eubs59B",
+    "USD+rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq",
+    "534F4C4F00000000000000000000000000000000+rsoLo2S1kiGeCcn6hCUXVrCpGMWLrRrLZz"
+  ]
+}

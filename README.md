@@ -157,3 +157,14 @@ after graduation, or your own price impact. Real results will be worse than pape
 - A Jupiter "no sell route" on a brand-new token can be indexing lag rather than a honeypot: one fresh token
   showed a buy route but no sell route at any size. The scanner flags it, but treat it as unconfirmed.
 - Thresholds in `checks.Thresholds` and `paper.Strategy` are starting points, not tested truths.
+
+## XRPL arbitrage scanner (`xrpl_arb`)
+
+A separate, read-only tool for the XRP Ledger: finds `XRP -> token -> ... -> XRP` cycles across order books and AMM
+pools and reports what each would return after fees. No key, no transactions. Built after looking at
+lab.bwif.meme, which turned out to be a dashboard for someone else's bot (the strategy is not on the page).
+Details, what was verified against mainnet and what was not: [`xrpl_arb/README.md`](xrpl_arb/README.md).
+
+```
+python -m xrpl_arb scan --config xrpl_arb/markets.example.json
+```
