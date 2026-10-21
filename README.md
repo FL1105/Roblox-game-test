@@ -161,7 +161,8 @@ after graduation, or your own price impact. Real results will be worse than pape
 ## XRPL arbitrage scanner (`xrpl_arb`)
 
 A separate, read-only tool for the XRP Ledger: finds `XRP -> token -> ... -> XRP` cycles across order books and AMM
-pools and reports what each would return after fees. No key, no transactions. Built after looking at
+pools and reports what each would return after fees. No key, no transactions. **To watch it live with nothing installed,
+open `dist/xrpl-cycle-watch.html` in a browser** (download the one file from GitHub and double-click it). Built after looking at
 lab.bwif.meme, which turned out to be a dashboard for someone else's bot (the strategy is not on the page).
 Details, what was verified against mainnet and what was not: [`xrpl_arb/README.md`](xrpl_arb/README.md).
 

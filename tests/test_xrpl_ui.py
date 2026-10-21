@@ -77,7 +77,7 @@ class StateFromTheWatcher(unittest.TestCase):
         m = by_pair[("EUR", "XRP")]
         self.assertEqual((m["offers_ab"], m["offers_ba"], m["pool"]), (1, 0, None))
         self.assertEqual(m["changed"], 103)  # the last ledger in which its books differed
-        self.assertEqual(by_pair[("XRP", "USD")]["changed"], 100)  # read once, never changed again
+        self.assertIsNone(by_pair[("XRP", "USD")]["changed"])  # read at the start, never changed since: reading is not a change
 
     def test_pool_depth_is_reported_in_xrp(self):
         ledger = FakeLedger(pools={frozenset((XRP, USD)): ((XRP, 1000), (USD, 500), 300)})

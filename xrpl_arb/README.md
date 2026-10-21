@@ -4,7 +4,7 @@ Finds `XRP -> token -> ... -> XRP` cycles across the XRP Ledger's order books an
 would return after fees. **Read-only: it holds no key and builds no transaction.** Standard library only.
 
 ```
-python -m unittest tests.test_xrpl_arb tests.test_xrpl_ui                    # 87 tests, no network
+python -m unittest tests.test_xrpl_arb tests.test_xrpl_ui tests.test_xrpl_js_parity tests.test_xrpl_standalone_build  # no network
 python -m xrpl_arb scan --config xrpl_arb/markets.example.json              # one scan
 python -m xrpl_arb scan --config pairs.json --loop 10 --out data/xrpl.jsonl # poll every 10 s, recorded
 python -m xrpl_arb watch --config pairs.json --out data/xrpl_watch.jsonl    # react to every ledger close
@@ -89,6 +89,28 @@ Two runs, 29 scans over about 230 ledgers (roughly 13 minutes). Treat it as a sm
   The model is optimistic here, on tiny pools (one held 0.78 XRPX at a 0% fee).
 - That is the same size of prize the lab.bwif.meme feed reports (median 0.0046 XRP per cycle), which is why polling at
   this speed is the wrong tool for capturing it.
+
+## Look at it live, with nothing to install
+
+Open **`dist/xrpl-cycle-watch.html`** in any browser (download that one file from GitHub, then double-click it). No Python, no
+server, no install. The page reads the XRP Ledger itself over a websocket (`wss://xrplcluster.com`, falling back to
+`wss://s1.ripple.com`), so what you see is the ledger as it closes, with the same dashboard `python -m xrpl_arb ui` serves.
+It stops when you close the tab.
+
+- It is **read-only**: the only things it sends are requests for data (`subscribe`, `ledger`, `account_info`, `amm_info`,
+  `book_offers`). There is no wallet, key or order code in it, and a test lists every command it can send.
+- The watched pairs are the 98 in `pairs.mainnet.json`, baked into the file. Thresholds can be changed from the address bar,
+  for example `.../xrpl-cycle-watch.html#min_profit=0.0001&max_xrp=50&max_legs=3` (also `min_profit_pct`, `tx_cost`).
+  Out-of-range values are ignored. At the defaults most ledgers show nothing; lower the bar to watch near-misses.
+- If a browser or network blocks outside websockets the page says so after a few seconds instead of sitting empty.
+- It is the Python maths ported to JavaScript (`xrpl_arb/static/engine.js`, float64 instead of Decimal). `tests/test_xrpl_js_parity.py`
+  runs both on the same inputs: quotes agree to 1e-9 relative on over 500 points, 60 random cycle graphs agree on profit and
+  best size, and the stream mapping gives the same pairs on real mainnet transaction metadata plus a synthetic case for
+  every metadata branch. I checked those tests can fail by breaking the engine four ways; each was caught.
+- Rebuild it after editing the page or the engine with `python tools/build_xrpl_standalone.py` (a test fails if the committed
+  file is stale).
+- Measured in headless Chromium against live mainnet (one run): the first full read of 98 pairs takes about 10 s, after that a
+  ledger is handled a median of 0.75 s after its close message arrives.
 
 ## Watching ledger by ledger (`watch`, `ui`)
 

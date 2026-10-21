@@ -79,7 +79,7 @@ class Asset:
         if len(self.currency) == 40:
             try:
                 text = bytes.fromhex(self.currency).rstrip(b"\x00").decode("ascii")
-                if text.isprintable():
+                if text and text.isprintable():
                     return text
             except ValueError:
                 pass

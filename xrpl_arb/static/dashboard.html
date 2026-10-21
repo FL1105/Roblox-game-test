@@ -129,6 +129,8 @@ tr.hot td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .log .what { overflow-wrap: anywhere; }
 details { margin-top: 10px; }
 summary { cursor: pointer; color: var(--ink-2); font-size: 12.5px; }
+.banner { border: 1px solid var(--warn); background: var(--surface); border-radius: var(--r); padding: 10px 14px; color: var(--ink-2); max-width: 90ch; }
+.banner b { color: var(--ink); }
 .foot { color: var(--ink-3); font-size: 12.5px; max-width: 90ch; }
 .foot b { color: var(--ink-2); font-weight: 600; }
 @media (prefers-reduced-motion: no-preference) { .pill .dot { transition: background .3s; } }
@@ -144,6 +146,7 @@ summary { cursor: pointer; color: var(--ink-2); font-size: 12.5px; }
 </div></header>
 
 <div class="wrap"><main>
+  <div class="banner" id="banner" role="status" hidden></div>
   <section class="kpis" aria-label="Summary">
     <div class="kpi lead" id="k-live"><div class="label">Opportunities live now</div><div class="value">0</div><div class="note"></div></div>
     <div class="kpi" id="k-seen"><div class="label">Seen this run</div><div class="value">0</div><div class="note"></div></div>
@@ -200,6 +203,7 @@ summary { cursor: pointer; color: var(--ink-2); font-size: 12.5px; }
   <p class="foot"><b>Read this as a measurement, not a result.</b> Profit figures are the model's, from one ledger's books and pools. Against the ledger's own quotes the model was usually within 0.02% and at worst 0.24% too generous, which is why the default margin is 0.25%. An opportunity listed here has not been traded and may not have been fillable. Settings: <span id="settings"></span></p>
 </main></div>
 
+<!--engine-->
 <script>
 "use strict";
 /* All data rendered below comes from the chain (token names especially) and is attacker-controlled:
@@ -402,6 +406,14 @@ function renderTop() {
   pill.dataset.state = st.state; document.getElementById("pill-text").textContent = label;
   pill.title = st.detail || "";
   document.getElementById("top-ledger").textContent = st.ledger ? nf(0).format(st.ledger) : "–";
+  const banner = document.getElementById("banner");
+  const stuck = (st.state === "reconnecting" || st.state === "starting") && ((st.attempts || 0) >= 2 || (st.state === "starting" && st.uptime_s > 20 && !st.ledger && window.XrplEngine));
+  banner.hidden = !stuck;
+  if (stuck) {
+    banner.textContent = "";
+    const b = document.createElement("b"); b.textContent = "Can't reach the XRP Ledger. ";
+    banner.append(b, document.createTextNode("This page connects to public XRP Ledger servers from your browser. If it keeps failing, your network may block websockets, or the page was opened somewhere that blocks outside connections. Save the file and open it directly in your browser." + (st.detail ? " Last error: " + st.detail : "")));
+  }
   document.getElementById("top-up").textContent = S.replay ? "recorded" : clock(st.uptime_s);
   document.getElementById("top-up-label").textContent = S.replay ? "mode" : "running";
 }
@@ -516,14 +528,25 @@ async function poll() {
     else { const p = document.getElementById("pill"); p.dataset.state = "offline"; document.getElementById("pill-text").textContent = "Server not reachable"; }
     return;
   }
-  const sig = (S.status.ledger || 0) + ":" + S.status.state + ":" + S.log.length;
-  if (sig !== drawnLedger) { drawnLedger = sig; renderAll(); } else renderTop();
+  draw();
 }
 document.getElementById("filter").addEventListener("input", () => S && renderMarkets());
 document.getElementById("span").addEventListener("change", () => S && renderAll());
 let resizeTimer = null;
 window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => S && renderAll(), 150); });
+function draw() {
+  const sig = (S.status.ledger || 0) + ":" + S.status.state + ":" + S.log.length;
+  if (sig !== drawnLedger) { drawnLedger = sig; renderAll(); } else renderTop();
+}
+function startEngine() {
+  // no server: the page reads the XRP Ledger itself, from this browser
+  const eng = window.XrplEngine.create({ pairs: window.__PAIRS__, settings: window.XrplEngine.settingsFromHash(location.hash), onUpdate: () => { S = eng.snapshot(); draw(); } });
+  S = eng.snapshot(); draw();
+  eng.start();
+  setInterval(() => { S = eng.snapshot(); renderTop(); }, 1000);
+}
 if (window.__STATE__) { S = window.__STATE__; renderAll(); }   // a recorded run embedded in the page: no server to poll
+else if (window.XrplEngine && window.__PAIRS__) startEngine();
 else { poll(); setInterval(poll, 1000); }
 </script>
 </body>

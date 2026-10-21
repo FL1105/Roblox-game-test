@@ -92,8 +92,8 @@ class BookState:
         reads = read_pairs(self.client, pairs, ledger, self.book_limit, self.workers, self.account)
         for a, b in pairs:
             key = frozenset((a, b))
-            if (key not in self.pools or self.pools[key] != reads.pools[key]
-                    or any(self.books.get(e) != reads.books[e] for e in ((a, b), (b, a)))):
+            if key in self.pools and (self.pools[key] != reads.pools[key]  # a first read is not a change
+                                      or any(self.books.get(e) != reads.books[e] for e in ((a, b), (b, a)))):
                 self.changed_at[key] = ledger
         self.pools.update(reads.pools)
         self.books.update(reads.books)

@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cycle Watch</title>
+<style>
+/* Layout: one column of instruments. A sticky bar, a KPI strip, the per-ledger chart beside the live list, then history. */
+:root {
+  --bg: #f4f4f1; --surface: #fcfcfb; --surface-2: #efeee9; --line: #e0dfd9;
+  --ink: #0b0b0b; --ink-2: #4a4945; --ink-3: #6b6a65;
+  --accent: #2a78d6; --accent-ink: #ffffff; --off: #8d8c85;
+  --good: #0ca30c; --warn: #fab219; --bad: #d03b3b;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --r: 8px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --line: #33332f;
+    --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #9c9b93;
+    --accent: #3987e5; --accent-ink: #0b0b0b; --off: #6f6e68;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --line: #33332f;
+  --ink: #f0efec; --ink-2: #c3c2b7; --ink-3: #9c9b93;
+  --accent: #3987e5; --accent-ink: #0b0b0b; --off: #6f6e68;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 16px 48px; }
+
+/* top bar */
+.bar { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+.bar .wrap { display: flex; align-items: center; gap: 16px; padding-block: 12px; flex-wrap: wrap; }
+.brand { display: flex; flex-direction: column; margin-right: auto; min-width: 0; }
+.brand h1 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+.brand span { color: var(--ink-3); font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 12.5px; white-space: nowrap; }
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--off); }
+.pill[data-state="connected"] .dot { background: var(--good); }
+.pill[data-state="reconnecting"] .dot, .pill[data-state="starting"] .dot { background: var(--warn); }
+.pill[data-state="offline"] .dot { background: var(--bad); }
+.stat { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.stat b { font: 600 14px var(--mono); font-variant-numeric: tabular-nums; }
+.stat small { color: var(--ink-3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r); padding: 5px 10px; cursor: pointer; }
+.btn:hover { background: var(--surface-2); }
+
+/* sections */
+main { display: grid; gap: 16px; padding-top: 16px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; min-width: 0; }
+.panel h2 { margin: 0 0 2px; font-size: 14px; font-weight: 650; }
+.panel .sub { margin: 0 0 12px; color: var(--ink-3); font-size: 12.5px; max-width: 70ch; }
+.row { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); }
+.row.even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 960px) { .row, .row.even { grid-template-columns: minmax(0, 1fr); } }
+
+/* KPI strip */
+.kpis { display: grid; gap: 12px; grid-template-columns: 1.4fr repeat(4, 1fr); }
+@media (max-width: 960px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kpis .lead { grid-column: 1 / -1; } }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; min-width: 0; }
+.kpi .label { color: var(--ink-3); font-size: 12px; }
+.kpi .value { font: 600 24px/1.15 var(--sans); letter-spacing: -0.01em; margin-top: 2px; overflow-wrap: anywhere; }
+.kpi .note { color: var(--ink-3); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+.kpi.lead .value { font-size: 48px; }
+.kpi.lead[data-on="1"] { border-color: var(--accent); }
+
+/* legends and charts */
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 8px; padding: 0; list-style: none; color: var(--ink-2); font-size: 12.5px; }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+.sw.off { background: var(--off); }
+.sw.tick { width: 2px; height: 10px; border-radius: 0; background: var(--off); }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { fill: var(--ink-3); font: 11px var(--mono); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .ref { stroke: var(--ink-3); stroke-width: 1; }
+.chart .ref-label { fill: var(--ink-2); }
+.chart .cross { stroke: var(--ink-3); stroke-width: 1; }
+.tip { position: absolute; pointer-events: none; z-index: 3; background: var(--ink); color: var(--bg); border-radius: 6px; padding: 7px 9px; font-size: 12px; line-height: 1.4; max-width: 280px; box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+.tip b { font-family: var(--mono); font-weight: 600; }
+.tip div { overflow-wrap: anywhere; }
+.minis { display: grid; gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 720px) { .minis { grid-template-columns: minmax(0, 1fr); } }
+
+/* live opportunities */
+.opp { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+.opp:last-child { margin-bottom: 0; }
+.opp .top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.opp .gain { font: 650 18px var(--mono); color: var(--good); font-variant-numeric: tabular-nums; }
+.opp .pct { font: 12.5px var(--mono); color: var(--ink-2); }
+.opp .meta { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+.path { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 8px 0 2px; }
+.chip { font: 12.5px var(--mono); background: var(--surface-2); border-radius: 5px; padding: 1px 7px; overflow-wrap: anywhere; }
+.chip.xrp { background: var(--accent); color: var(--accent-ink); }
+.arrow { color: var(--ink-3); }
+.opp button { margin-top: 6px; font-size: 12.5px; }
+.legs { margin: 8px 0 0; padding: 0; list-style: none; font: 12.5px var(--mono); color: var(--ink-2); display: grid; gap: 3px; }
+.legs li { overflow-wrap: anywhere; }
+.empty { color: var(--ink-2); padding: 4px 0; }
+.empty small { display: block; color: var(--ink-3); margin-top: 4px; font-size: 12.5px; overflow-wrap: anywhere; }
+
+/* tables */
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink-3); font-weight: 550; font-size: 12px; white-space: nowrap; background: var(--surface); position: sticky; top: 0; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--ink); }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.hot td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.tools { display: flex; gap: 10px; align-items: center; margin: 0 0 10px; flex-wrap: wrap; }
+.tools input { border: 1px solid var(--line); background: var(--bg); border-radius: var(--r); padding: 6px 10px; min-width: 0; width: min(260px, 100%); }
+.maxh { max-height: 420px; overflow: auto; }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--surface-2); color: var(--ink-2); }
+.tag.fresh { background: var(--accent); color: var(--accent-ink); }
+.log { list-style: none; margin: 0; padding: 0; font-size: 12.5px; max-height: 300px; overflow: auto; }
+.log li { padding: 5px 0; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 8px; }
+.log .when { color: var(--ink-3); font-family: var(--mono); }
+.log .what { overflow-wrap: anywhere; }
+details { margin-top: 10px; }
+summary { cursor: pointer; color: var(--ink-2); font-size: 12.5px; }
+.banner { border: 1px solid var(--warn); background: var(--surface); border-radius: var(--r); padding: 10px 14px; color: var(--ink-2); max-width: 90ch; }
+.banner b { color: var(--ink); }
+.foot { color: var(--ink-3); font-size: 12.5px; max-width: 90ch; }
+.foot b { color: var(--ink-2); font-weight: 600; }
+@media (prefers-reduced-motion: no-preference) { .pill .dot { transition: background .3s; } }
+</style>
+</head>
+<body>
+<header class="bar"><div class="wrap">
+  <div class="brand"><h1>Cycle Watch</h1><span>XRP Ledger cycle arbitrage &middot; read-only, nothing is traded</span></div>
+  <span class="pill" id="pill" data-state="starting"><span class="dot"></span><span id="pill-text">Starting</span></span>
+  <div class="stat"><b id="top-ledger">&ndash;</b><small>validated ledger</small></div>
+  <div class="stat"><b id="top-up">&ndash;</b><small id="top-up-label">running</small></div>
+  <button class="btn" id="theme" type="button" title="Switch between automatic, light and dark">Theme: auto</button>
+</div></header>
+
+<div class="wrap"><main>
+  <div class="banner" id="banner" role="status" hidden></div>
+  <section class="kpis" aria-label="Summary">
+    <div class="kpi lead" id="k-live"><div class="label">Opportunities live now</div><div class="value">0</div><div class="note"></div></div>
+    <div class="kpi" id="k-seen"><div class="label">Seen this run</div><div class="value">0</div><div class="note"></div></div>
+    <div class="kpi" id="k-life"><div class="label">Typical lifetime</div><div class="value">&ndash;</div><div class="note"></div></div>
+    <div class="kpi" id="k-best"><div class="label">Best single cycle</div><div class="value">&ndash;</div><div class="note"></div></div>
+    <div class="kpi" id="k-speed"><div class="label">Close to evaluated</div><div class="value">&ndash;</div><div class="note"></div></div>
+  </section>
+
+  <div class="row">
+    <section class="panel">
+      <h2>Best cycle in each ledger</h2>
+      <p class="sub">The most XRP any cycle could gain at its best size, before the network fee. A dot has to sit above the upper line to count as an opportunity.</p>
+      <ul class="legend">
+        <li><span class="sw"></span>ledger had an opportunity</li>
+        <li><span class="sw off"></span>best cycle fell short</li>
+        <li><span class="sw tick"></span>no cycle paid at any size</li>
+        <li><label>Show <select id="span"><option value="60">last 60</option><option value="120" selected>last 120</option><option value="600">all</option></select> ledgers</label></li>
+      </ul>
+      <div class="chart" id="main-chart"></div>
+      <details><summary>Show as a table</summary><div class="scroll maxh"><table id="main-table"></table></div></details>
+    </section>
+    <section class="panel">
+      <h2>Live opportunities</h2>
+      <p class="sub">Cycles that clear the profit and margin thresholds in the latest ledger.</p>
+      <div id="live"></div>
+    </section>
+  </div>
+
+  <section class="minis">
+    <div class="panel"><h2>Seconds from ledger close to evaluated</h2><p class="sub" id="lat-sub"></p><div class="chart" id="lat-chart"></div></div>
+    <div class="panel"><h2>Pairs re-read per ledger</h2><p class="sub">Only pairs whose books or pool changed are read again; the first ledger and the periodic safety refresh read all of them.</p><div class="chart" id="pairs-chart"></div></div>
+  </section>
+
+  <div class="row even">
+    <section class="panel">
+      <h2>Ended opportunities</h2>
+      <p class="sub">How many ledgers each one stayed open. A ledger closes about every 3.5 seconds.</p>
+      <div class="scroll maxh"><table id="ended"></table></div>
+    </section>
+    <section class="panel">
+      <h2>Events</h2>
+      <p class="sub">Stream connections and every opportunity as it appears and ends.</p>
+      <ul class="log" id="log"></ul>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Markets</h2>
+    <p class="sub">Every pair being watched: AMM pool depth and fee, and how many offers sit in each order book.</p>
+    <div class="tools"><input id="filter" type="search" placeholder="Filter by token" aria-label="Filter markets by token"><span class="note" id="mk-count"></span></div>
+    <div class="scroll maxh"><table id="markets"></table></div>
+  </section>
+
+  <p class="foot"><b>Read this as a measurement, not a result.</b> Profit figures are the model's, from one ledger's books and pools. Against the ledger's own quotes the model was usually within 0.02% and at worst 0.24% too generous, which is why the default margin is 0.25%. An opportunity listed here has not been traded and may not have been fillable. Settings: <span id="settings"></span></p>
+</main></div>
+
+<script>
+/* The xrpl_arb package in plain JavaScript, so a browser can do it all itself: read the XRP Ledger over a websocket,
+   quote swaps against order books and AMM pools, search XRP cycles, and follow each opportunity from the ledger it
+   appears in until it disappears. Read-only: it only asks the ledger questions, it has no key and sends nothing but
+   requests for data. Same algorithms as the Python code (liquidity.py, cycles.py, stream.py, ui.py); numbers are
+   float64 instead of Decimal, and tests/test_xrpl_js_parity.py checks the two agree. */
+(function (root) {
+  "use strict";
+
+  const DROP = 1e-6;
+  const GOLDEN = (Math.sqrt(5) - 1) / 2;
+  const FEE_UNITS = 100000;
+  const SLOT_EXPIRED = 20;
+
+  // ---------------------------------------------------------------- assets
+  // An asset is identified by one string: "XRP", or "<currency>+<issuer>" with a 3-letter code or 40 hex digits.
+  function labelOf(id) {
+    if (id === "XRP") return "XRP";
+    const cur = id.split("+")[0];
+    if (cur.length !== 40) return cur;
+    const bytes = [];
+    for (let i = 0; i < 40; i += 2) bytes.push(parseInt(cur.slice(i, i + 2), 16));
+    while (bytes.length && bytes[bytes.length - 1] === 0) bytes.pop();   // zero padding
+    if (!bytes.length || bytes.some((b) => b < 32 || b > 126)) return cur;
+    return String.fromCharCode.apply(null, bytes);
+  }
+  function pairKey(a, b) { return a < b ? a + "|" + b : b + "|" + a; }
+  function rawId(amount) {
+    if (typeof amount === "string") return "XRP";
+    const cur = amount.currency;
+    return (cur.length === 40 ? cur.toUpperCase() : cur) + "+" + amount.issuer;
+  }
+  function amountValue(a) { return typeof a === "string" ? Number(a) / 1e6 : Number(a.value); }
+  function floorDrop(x) { return Math.floor(x * 1e6 + 1e-7) / 1e6; }
+  function spec(id) {
+    if (id === "XRP") return { currency: "XRP" };
+    const i = id.indexOf("+");
+    return { currency: id.slice(0, i), issuer: id.slice(i + 1) };
+  }
+
+  // ---------------------------------------------------------------- liquidity (liquidity.py)
+  function reserves(pool, inId) { return inId === pool.a ? [pool.ra, pool.rb] : [pool.rb, pool.ra]; }
+  function poolSwap(pool, inId, dx) {
+    const [x, y] = reserves(pool, inId), m = 1 - pool.fee;
+    const dy = y * m * dx / (x + m * dx);
+    const nx = x + dx, ny = y - dy;
+    const next = inId === pool.a ? { ...pool, ra: nx, rb: ny } : { ...pool, ra: ny, rb: nx };
+    return [dy, next];
+  }
+  // input after which the pool's spot price (in per out) equals `price`; 0 if it is already there
+  function ammInToPrice(x, y, m, price) {
+    if (price * m * y <= x) return 0;
+    const root = Math.sqrt((1 - m) * (1 - m) * x * x + 4 * m * m * price * x * y);
+    return (root - (1 + m) * x) / (2 * m);
+  }
+  function market(inId, outId, offers, pool, rate) { return { inId, outId, offers: offers || [], pool: pool || null, rate: rate || 1 }; }
+  function marketEmpty(m) { return m.offers.length === 0 && m.pool === null; }
+  function poolId(m) { return pairKey(m.inId, m.outId); }
+  function spotRate(m) {
+    let best = 0;
+    if (m.offers.length) best = m.offers[0].gets / m.offers[0].pays;
+    if (m.pool) { const [x, y] = reserves(m.pool, m.inId); best = Math.max(best, y * (1 - m.pool.fee) / x); }
+    return best / m.rate;
+  }
+  // output for spending `grossIn`, and the pool afterwards; `poolOverride` carries an earlier leg's trade forward
+  function quote(m, grossIn, poolOverride) {
+    let pool = poolOverride ? poolOverride : m.pool;
+    let remaining = grossIn / m.rate, out = 0;
+    if (remaining <= 0) return [0, pool];
+    for (const o of m.offers) {
+      if (pool) {
+        const [x, y] = reserves(pool, m.inId);
+        const dx = Math.min(ammInToPrice(x, y, 1 - pool.fee, o.pays / o.gets), remaining);
+        if (dx > 0) {
+          const [dy, next] = poolSwap(pool, m.inId, dx);
+          pool = next; out += dy; remaining -= dx;
+          if (remaining <= 0) return [out, pool];
+        }
+      }
+      const take = Math.min(o.pays, remaining);
+      out += o.gets * take / o.pays; remaining -= take;
+      if (remaining <= 0) return [out, pool];
+    }
+    if (pool) { const [dy, next] = poolSwap(pool, m.inId, remaining); out += dy; pool = next; }
+    return [out, pool];
+  }
+
+  // ---------------------------------------------------------------- cycles (cycles.py)
+  function findCycles(markets, base, maxLegs) {
+    const edges = new Map();
+    for (const m of markets.values()) {
+      if (marketEmpty(m)) continue;
+      if (!edges.has(m.inId)) edges.set(m.inId, []);
+      edges.get(m.inId).push(m.outId);
+    }
+    const cycles = [];
+    const walk = (visited, legs) => {
+      const cur = visited[visited.length - 1];
+      for (const nxt of edges.get(cur) || []) {
+        const m = markets.get(cur + ">" + nxt);
+        if (nxt === base) cycles.push(legs.concat([m]));
+        else if (!visited.includes(nxt) && legs.length + 1 < maxLegs) walk(visited.concat([nxt]), legs.concat([m]));
+      }
+    };
+    walk([base], []);
+    return cycles;
+  }
+  function runCycle(cycle, amountIn, legs, wholeDrops) {
+    if (wholeDrops === undefined) wholeDrops = true;
+    let amt = amountIn;
+    const pools = new Map();
+    for (const m of cycle) {
+      const [out0, after] = quote(m, amt, pools.get(poolId(m)));
+      if (after) pools.set(poolId(m), after);
+      const out = wholeDrops && m.outId === "XRP" ? floorDrop(out0) : out0;
+      if (legs) legs.push({ inId: m.inId, outId: m.outId, amountIn: amt, amountOut: out });
+      amt = out;
+    }
+    return amt;
+  }
+  function bestSize(cycle, maxIn) {
+    const profit = (x) => runCycle(cycle, x, null, false) - x;
+    let a = 0, b = maxIn;
+    let c = b - GOLDEN * (b - a), d = a + GOLDEN * (b - a);
+    let fc = profit(c), fd = profit(d);
+    for (let i = 0; i < 200; i++) {
+      if (b - a <= DROP) break;
+      if (fc < fd) { a = c; c = d; fc = fd; d = a + GOLDEN * (b - a); fd = profit(d); }
+      else { b = d; d = c; fd = fc; c = b - GOLDEN * (b - a); fc = profit(c); }
+    }
+    const x = floorDrop((a + b) / 2);
+    return x > 0 && runCycle(cycle, x) - x > 0 ? x : 0;
+  }
+  function candidates(markets, o) {
+    const found = [];
+    for (const cycle of findCycles(markets, "XRP", o.maxLegs)) {
+      let rate = 1;
+      for (const m of cycle) rate *= spotRate(m);
+      if (rate <= 1) continue;   // profit is concave with slope rate-1 at 0, so nothing to find
+      const x = bestSize(cycle, o.maxXrp);
+      if (x <= 0) continue;
+      const legs = [];
+      const out = runCycle(cycle, x, legs);
+      const profit = out - x - o.txCost;
+      found.push({ legs, amountIn: x, amountOut: out, txCost: o.txCost, profit, profitPct: profit / x * 100,
+                   path: [cycle[0].inId].concat(cycle.map((m) => m.outId)) });
+    }
+    found.sort((p, q) => q.profit - p.profit);
+    return found;
+  }
+  const passes = (opp, minProfit, minPct) => opp.profit >= minProfit && opp.profitPct >= minPct;
+
+  // ---------------------------------------------------------------- reading the ledger (snapshot.py)
+  function parseOffers(result) {
+    const offers = [];
+    for (const o of result.offers || []) {
+      const getsFull = amountValue(o.TakerGets), paysFull = amountValue(o.TakerPays);
+      if (!(getsFull > 0)) continue;
+      const gets = o.taker_gets_funded !== undefined ? amountValue(o.taker_gets_funded) : getsFull;
+      const pays = o.taker_pays_funded !== undefined ? amountValue(o.taker_pays_funded) : paysFull * gets / getsFull;
+      if (gets > 0 && pays > 0) offers.push({ pays, gets });
+    }
+    offers.sort((p, q) => p.pays / p.gets - q.pays / q.gets);
+    return offers;
+  }
+  function poolFee(amm, account) {
+    let units = amm.trading_fee;
+    const slot = amm.auction_slot || {};
+    const members = new Set([slot.account].concat((slot.auth_accounts || []).map((x) => x.account)));
+    const live = (slot.time_interval === undefined ? SLOT_EXPIRED : slot.time_interval) < SLOT_EXPIRED;
+    if (account && members.has(account) && live) units = slot.discounted_fee;
+    return units / FEE_UNITS;
+  }
+  function parsePool(result, a, b, account) {
+    const amm = result.amm;
+    const a1 = rawId(amm.amount), a2 = rawId(amm.amount2);
+    if (pairKey(a1, a2) !== pairKey(a, b)) throw { code: "badPool", message: "amm_info returned " + a1 + "/" + a2 };
+    const r1 = amountValue(amm.amount), r2 = amountValue(amm.amount2);
+    if (!(r1 > 0 && r2 > 0)) return null;
+    return { a: a1, b: a2, ra: r1, rb: r2, fee: poolFee(amm, account), account: amm.account || null };
+  }
+
+  // ---------------------------------------------------------------- the stream (stream.py)
+  class PairIndex {
+    constructor(pairs) {
+      this.pairs = [];
+      const seen = new Set();
+      for (const [a, b] of pairs) { const k = pairKey(a, b); if (!seen.has(k)) { seen.add(k); this.pairs.push([a, b]); } }
+      this.byAmmAccount = new Map();
+      this.keys = seen;
+    }
+    learnAccounts(pools) { for (const [k, p] of pools) if (p && p.account) this.byAmmAccount.set(p.account, k); }
+    // pairs whose books or pool a validated transaction changed, from its metadata
+    touched(msg) {
+      const hit = new Set();
+      const nodes = (msg.meta && msg.meta.AffectedNodes) || [];
+      for (const node of nodes) {
+        const body = node.ModifiedNode || node.CreatedNode || node.DeletedNode;
+        if (!body) continue;
+        const f = body.FinalFields || body.NewFields || {};
+        if (body.LedgerEntryType === "Offer") {
+          if (f.TakerGets !== undefined && f.TakerPays !== undefined) {
+            const k = pairKey(rawId(f.TakerGets), rawId(f.TakerPays));
+            if (this.keys.has(k)) hit.add(k);
+          }
+        } else if (body.LedgerEntryType === "AccountRoot") {
+          const k = this.byAmmAccount.get(f.Account);
+          if (k) hit.add(k);
+        } else if (body.LedgerEntryType === "RippleState") {
+          for (const side of ["HighLimit", "LowLimit"]) {
+            const k = this.byAmmAccount.get((f[side] || {}).issuer);
+            if (k) hit.add(k);
+          }
+        }
+      }
+      return hit;
+    }
+  }
+
+  class Lifetimes {
+    constructor() { this.live = new Map(); }
+    update(ledger, opps) {
+      const now = new Map(opps.map((o) => [o.path.join("|"), o]));
+      const fresh = [];
+      for (const [k, o] of now) {
+        let rec = this.live.get(k);
+        if (!rec) { rec = { first: ledger, best: o.profit, bestIn: o.amountIn }; this.live.set(k, rec); fresh.push(o); }
+        rec.last = ledger;
+        if (o.profit > rec.best) { rec.best = o.profit; rec.bestIn = o.amountIn; }
+      }
+      const ended = [];
+      for (const k of Array.from(this.live.keys())) {
+        if (now.has(k)) continue;
+        const rec = this.live.get(k); this.live.delete(k);
+        ended.push({ path: k.split("|"), first_ledger: rec.first, last_ledger: rec.last, ledgers_alive: rec.last - rec.first + 1,
+                     best_profit: rec.best, best_amount_in: rec.bestIn });
+      }
+      return [fresh, ended];
+    }
+  }
+
+  // A websocket speaking rippled's request/response protocol, with a cap on requests in flight.
+  class Rpc {
+    constructor(url, WS, onStream, onClose, maxInFlight) {
+      this.url = url; this.WS = WS; this.onStream = onStream; this.onClose = onClose;
+      this.max = maxInFlight || 12; this.nextId = 1; this.pending = new Map(); this.queue = []; this.inFlight = 0; this.closed = false;
+    }
+    open() {
+      return new Promise((resolve, reject) => {
+        let opened = false;
+        const ws = (this.ws = new this.WS(this.url));
+        ws.onopen = () => { opened = true; resolve(); };
+        ws.onerror = () => { if (!opened) reject({ code: "connect", message: "could not open " + this.url }); };
+        ws.onclose = () => {
+          this.closed = true;
+          for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject({ code: "closed", message: "connection closed" }); }
+          this.pending.clear(); this.queue.length = 0;
+          if (!opened) reject({ code: "connect", message: "could not open " + this.url }); else this.onClose();
+        };
+        ws.onmessage = (ev) => {
+          let msg; try { msg = JSON.parse(typeof ev.data === "string" ? ev.data : String(ev.data)); } catch (e) { return; }
+          if (msg.id !== undefined && this.pending.has(msg.id)) {
+            const p = this.pending.get(msg.id); this.pending.delete(msg.id); clearTimeout(p.timer); this.inFlight--;
+            if (msg.status === "error") p.reject({ code: msg.error || "unknown", message: msg.error_message || "" });
+            else p.resolve(msg.result !== undefined ? msg.result : msg);
+            this.pump();
+          } else if (this.onStream) this.onStream(msg);
+        };
+      });
+    }
+    request(command, params) {
+      return new Promise((resolve, reject) => { this.queue.push({ command, params, resolve, reject }); this.pump(); });
+    }
+    pump() {
+      while (!this.closed && this.inFlight < this.max && this.queue.length) {
+        const job = this.queue.shift(), id = this.nextId++;
+        this.inFlight++;
+        const timer = setTimeout(() => {
+          if (this.pending.delete(id)) { this.inFlight--; job.reject({ code: "timeout", message: job.command + " timed out" }); this.pump(); }
+        }, 20000);
+        this.pending.set(id, { resolve: job.resolve, reject: job.reject, timer });
+        this.ws.send(JSON.stringify({ id, command: job.command, ...job.params }));
+      }
+    }
+    close() { this.closed = true; try { this.ws.close(); } catch (e) { /* already closed */ } }
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const median = (a) => { const s = a.slice().sort((x, y) => x - y), n = s.length; return n ? (n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2) : null; };
+
+  // ---------------------------------------------------------------- the engine (stream.py + ui.py)
+  const DEFAULTS = {
+    min_profit: 0.001, min_profit_pct: 0.25, tx_cost: 0.0001, max_legs: 4, max_xrp: 25, account: null,
+    settle_ms: 350, full_every: 20, book_limit: 60, urls: ["wss://xrplcluster.com/", "wss://s1.ripple.com/"],
+  };
+
+  // Settings from the address bar, e.g. #min_profit=0.0001&max_xrp=50&max_legs=3. Unknown or out-of-range values are ignored.
+  const LIMITS = { min_profit: [0, 100], min_profit_pct: [-100, 100], tx_cost: [0, 1], max_legs: [2, 5], max_xrp: [0.01, 100000] };
+  function settingsFromHash(hash) {
+    const out = {};
+    for (const part of String(hash || "").replace(/^#/, "").split("&")) {
+      const [k, v] = part.split("=");
+      if (!LIMITS[k] || v === undefined || v === "") continue;
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < LIMITS[k][0] || n > LIMITS[k][1]) continue;
+      out[k] = k === "max_legs" ? Math.round(n) : n;
+    }
+    return out;
+  }
+
+  function create(options) {
+    const S = { ...DEFAULTS, ...(options.settings || {}) };
+    const WS = options.WebSocket || root.WebSocket;
+    const now = options.now || (() => Date.now());
+    const onUpdate = options.onUpdate || (() => {});
+    const index = new PairIndex(options.pairs);
+    const rates = new Map();       // issuer -> transfer rate
+    const pools = new Map(), books = new Map(), changedAt = new Map(), markets = new Map();
+    const tracker = new Lifetimes();
+    const dash = { started: now(), status: { state: "starting", detail: "", attempts: 0 }, ledgers: [], live: new Map(),
+                   ended: [], log: [], seen: 0, bestSeen: null, lastTop: null };
+    let stopped = false, rpc = null, attempt = 0;
+
+    const ledgerMax = 600, endedMax = 300, logMax = 200;
+    const log = (ledger, text) => { dash.log.unshift({ t: Math.round(now() / 100) / 10, ledger, text }); if (dash.log.length > logMax) dash.log.pop(); };
+    const setStatus = (state, detail, attempts) => { dash.status = { state, detail, attempts: attempts || 0 }; log(null, "stream " + state + ": " + detail); onUpdate(); };
+    const labels = (path) => path.map(labelOf);
+
+    async function readRates() {
+      const issuers = new Set();
+      for (const [a, b] of index.pairs) for (const id of [a, b]) if (id !== "XRP") issuers.add(id.slice(id.indexOf("+") + 1));
+      await Promise.all(Array.from(issuers).filter((i) => !rates.has(i)).map(async (iss) => {
+        try {
+          const r = await rpc.request("account_info", { account: iss, ledger_index: "validated" });
+          rates.set(iss, (r.account_data.TransferRate === undefined ? 1e9 : Number(r.account_data.TransferRate)) / 1e9);
+        } catch (e) { rates.set(iss, 1); }
+      }));
+    }
+    const rateOf = (id) => (id === "XRP" ? 1 : rates.get(id.slice(id.indexOf("+") + 1)) || 1);
+
+    async function pinned(command, params, ledger) {
+      try { return [await rpc.request(command, { ...params, ledger_index: ledger }), true]; }
+      catch (e) {
+        if (e.code !== "lgrNotFound") throw e;
+        return [await rpc.request(command, { ...params, ledger_index: "validated" }), false];
+      }
+    }
+    // Re-read the dirty pairs (all if null) at `ledger`; returns {skipped, consistent, count}
+    async function refresh(dirty, ledger) {
+      const pairs = dirty === null ? index.pairs : index.pairs.filter(([a, b]) => dirty.has(pairKey(a, b)));
+      const skipped = []; let consistent = true;
+      const fresh = new Map();
+      await Promise.all(pairs.map(async ([a, b]) => {
+        const k = pairKey(a, b);
+        let pool = null;
+        try {
+          const [res, ok] = await pinned("amm_info", { asset: spec(a), asset2: spec(b) }, ledger);
+          consistent = consistent && ok;
+          pool = parsePool(res, a, b, S.account);
+        } catch (e) {
+          if (e.code === "badPool") skipped.push("pool " + labelOf(a) + "/" + labelOf(b) + ": " + e.message);
+          else if (e.code !== "actNotFound") {
+            if (e.code === "closed" || e.code === "timeout" || e.code === "connect") throw e;
+            skipped.push("pool " + labelOf(a) + "/" + labelOf(b) + ": " + (e.code || e.message || e));
+          }
+        }
+        const sides = {};
+        for (const [x, y] of [[a, b], [b, a]]) {   // offers selling y for x
+          try {
+            const [res, ok] = await pinned("book_offers", { taker_gets: spec(y), taker_pays: spec(x), limit: S.book_limit }, ledger);
+            consistent = consistent && ok;
+            sides[x + ">" + y] = parseOffers(res);
+          } catch (e) {
+            if (e.code === "closed" || e.code === "timeout" || e.code === "connect") throw e;
+            skipped.push("book " + labelOf(x) + "->" + labelOf(y) + ": " + (e.code || e.message || e));
+            sides[x + ">" + y] = [];
+          }
+        }
+        fresh.set(k, { pool, sides, a, b });
+      }));
+      for (const [k, f] of fresh) {
+        const prev = pools.has(k) ? { pool: pools.get(k), ab: books.get(f.a + ">" + f.b), ba: books.get(f.b + ">" + f.a) } : null;
+        if (prev && (JSON.stringify(prev.pool) !== JSON.stringify(f.pool) || JSON.stringify(prev.ab) !== JSON.stringify(f.sides[f.a + ">" + f.b])
+            || JSON.stringify(prev.ba) !== JSON.stringify(f.sides[f.b + ">" + f.a]))) changedAt.set(k, ledger);   // the first read is not a change
+        pools.set(k, f.pool);
+        for (const e in f.sides) books.set(e, f.sides[e]);
+        for (const [x, y] of [[f.a, f.b], [f.b, f.a]]) markets.set(x + ">" + y, market(x, y, books.get(x + ">" + y), f.pool, rateOf(x)));
+      }
+      index.learnAccounts(pools);
+      return { skipped, consistent, count: pairs.length };
+    }
+
+    let sinceFull = 0;
+    async function handleLedger(ledger, closedAt, dirty, full) {
+      const began = now();
+      const reads = await refresh(full ? null : dirty, typeof ledger === "number" ? ledger : "validated");
+      const readDone = now();
+      const cands = candidates(markets, { maxXrp: S.max_xrp, txCost: S.tx_cost, maxLegs: S.max_legs });
+      const opps = cands.filter((o) => passes(o, S.min_profit, S.min_profit_pct));
+      const [fresh, ended] = tracker.update(ledger, opps);
+      const evalDone = now();
+      sinceFull = full ? 0 : sinceFull + 1;
+      const top = opps[0] || cands[0] || null;
+      dash.ledgers.push({
+        ledger, t: Math.round(now() / 100) / 10, full, pairs_read: reads.count, after_close_s: Math.round(evalDone - closedAt) / 1000,
+        read_s: Math.round(readDone - began) / 1000, candidates: cands.length, opportunities: opps.length, skipped: reads.skipped.length,
+        best_gross_xrp: cands.length ? cands[0].profit + cands[0].txCost : null, best_labels: top ? labels(top.path) : null,
+      });
+      if (dash.ledgers.length > ledgerMax) dash.ledgers.shift();
+      const seenNow = new Set();
+      for (const o of opps) {
+        const key = o.path.join("|"); seenNow.add(key);
+        const prev = dash.live.get(key);
+        const view = { key, labels: labels(o.path), first_ledger: prev ? prev.first_ledger : ledger, last_ledger: ledger, amount_in: o.amountIn,
+                       amount_out: o.amountOut, profit: o.profit, profit_pct: o.profitPct,
+                       legs: o.legs.map((l) => ({ in: labelOf(l.inId), out: labelOf(l.outId), amount_in: l.amountIn, amount_out: l.amountOut })) };
+        dash.live.set(key, view);
+        if (!dash.bestSeen || view.profit > dash.bestSeen.profit) dash.bestSeen = { labels: view.labels, profit: view.profit, profit_pct: view.profit_pct, amount_in: view.amount_in, ledger };
+      }
+      for (const o of fresh) { dash.seen++; log(ledger, "new " + (o.profit >= 0 ? "+" : "") + o.profit.toFixed(5) + " XRP (" + (o.profitPct >= 0 ? "+" : "") + o.profitPct.toFixed(2) + "%) " + labels(o.path).join(" → ")); }
+      for (const e of ended) {
+        dash.live.delete(e.path.join("|"));
+        const row = { labels: labels(e.path), first_ledger: e.first_ledger, last_ledger: e.last_ledger, ledgers_alive: e.ledgers_alive, best_profit: e.best_profit, best_amount_in: e.best_amount_in };
+        dash.ended.unshift(row); if (dash.ended.length > endedMax) dash.ended.pop();
+        log(ledger, "ended after " + e.ledgers_alive + " ledger(s), best " + (e.best_profit >= 0 ? "+" : "") + e.best_profit.toFixed(5) + " XRP: " + row.labels.join(" → "));
+      }
+      onUpdate();
+    }
+
+    async function session(url) {
+      let dirty = new Set(), latest = null, timer = null, processing = false, first = true, done = null;
+      const closed = new Promise((r) => { done = r; });
+      const kick = async () => {
+        timer = null;
+        if (!latest || processing || stopped) return;
+        const job = latest; latest = null;
+        const d = dirty; dirty = new Set();
+        processing = true;
+        try { await handleLedger(job.ledger, job.closedAt, d, first || sinceFull >= S.full_every); first = false; }
+        catch (e) { if (e && (e.code === "closed" || e.code === "timeout")) { done(); return; } log(job.ledger, "read failed: " + (e.code || e.message || e)); }
+        processing = false;
+        if (latest && !timer) timer = setTimeout(kick, 0);
+      };
+      rpc = new Rpc(url, WS, (msg) => {
+        if (msg.type === "ledgerClosed") { latest = { ledger: msg.ledger_index, closedAt: now() }; if (!timer && !processing) timer = setTimeout(kick, S.settle_ms); }
+        else if (msg.type === "transaction" && msg.validated) { for (const k of index.touched(msg)) dirty.add(k); }
+      }, () => done(), 12);
+      await rpc.open();
+      await rpc.request("subscribe", { streams: ["ledger", "transactions"] });
+      attempt = 0;
+      setStatus("connected", url, 0);
+      await readRates();
+      const lr = await rpc.request("ledger", { ledger_index: "validated" });   // fill the page now, not at the next close
+      latest = { ledger: Number(lr.ledger_index), closedAt: now() };
+      timer = setTimeout(kick, 0);
+      await closed;
+      clearTimeout(timer);
+      rpc.close();
+    }
+
+    async function run() {
+      while (!stopped) {
+        const url = S.urls[attempt % S.urls.length];
+        try { await session(url); attempt = stopped ? attempt : attempt + 1; if (!stopped) setStatus("reconnecting", "the connection closed", attempt); }
+        catch (e) { attempt++; if (!stopped) setStatus("reconnecting", (e && (e.message || e.code)) || String(e), attempt); }
+        if (!stopped) await sleep(Math.min(1000 * Math.pow(2, Math.min(attempt, 4)), 20000));
+      }
+    }
+
+    function marketRows() {
+      const inOpp = new Set();
+      for (const o of dash.live.values()) for (const l of o.legs) inOpp.add(pairKey(l.in, l.out));
+      const last = dash.ledgers.length ? dash.ledgers[dash.ledgers.length - 1].ledger : null;
+      return index.pairs.map(([a, b]) => {
+        const k = pairKey(a, b), pool = pools.get(k) || null;
+        const row = { a: labelOf(a), b: labelOf(b), offers_ab: (books.get(a + ">" + b) || []).length, offers_ba: (books.get(b + ">" + a) || []).length, pool: null,
+                      changed: changedAt.has(k) ? changedAt.get(k) : null, in_opportunity: inOpp.has(pairKey(labelOf(a), labelOf(b))) };
+        if (pool) {
+          const [ra, rb] = pool.a === a ? [pool.ra, pool.rb] : [pool.rb, pool.ra];
+          row.pool = { reserve_a: ra, reserve_b: rb, fee_pct: pool.fee * 100, price: rb ? ra / rb : null,
+                       tvl_xrp: a === "XRP" ? 2 * ra : b === "XRP" ? 2 * rb : null };
+        }
+        return row;
+      });
+    }
+    function snapshot() {
+      const recent = dash.ledgers.slice(-100).filter((r) => !r.full).map((r) => r.after_close_s);
+      const lifetimes = dash.ended.map((e) => e.ledgers_alive);
+      const last = dash.ledgers.length ? dash.ledgers[dash.ledgers.length - 1].ledger : null;
+      return {
+        replay: false, now: Math.round(now() / 100) / 10,
+        status: { ...dash.status, uptime_s: Math.round((now() - dash.started) / 1000), ledger: last },
+        settings: { min_profit: S.min_profit, min_profit_pct: S.min_profit_pct, tx_cost: S.tx_cost, max_legs: S.max_legs, max_xrp: S.max_xrp, account: S.account },
+        kpis: { live: dash.live.size, seen: dash.seen, ended: dash.ended.length, median_lifetime: median(lifetimes), best_seen: dash.bestSeen,
+                ledgers: dash.ledgers.length, median_after_close_s: median(recent),
+                p90_after_close_s: recent.length ? recent.slice().sort((x, y) => x - y)[Math.floor(recent.length * 0.9)] : null },
+        ledgers: dash.ledgers.slice(), live: Array.from(dash.live.values()).sort((p, q) => q.profit - p.profit),
+        ended: dash.ended.slice(), markets: marketRows(), log: dash.log.slice(),
+      };
+    }
+    return { start() { run(); }, stop() { stopped = true; if (rpc) rpc.close(); }, snapshot, _internals: { index, markets, pools, books, refresh } };
+  }
+
+  const api = {
+    labelOf, pairKey, rawId, amountValue, floorDrop, market, quote, spotRate, ammInToPrice, poolSwap, findCycles, runCycle, bestSize, candidates,
+    passes, parseOffers, parsePool, PairIndex, Lifetimes, Rpc, create, settingsFromHash, DEFAULTS,
+  };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.XrplEngine = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+</script>
+<script>window.__PAIRS__ = [["XRP","2442424200000000000000000000000000000000+r9MqzhBGXeXiWnNwCz91Lp9jM5r2FnFgnX"],["XRP","245452554D500000000000000000000000000000+r3iM2Ffe9Krgn6n3qhHj2oe8kiJMKB63s7"],["XRP","3352444559450000000000000000000000000000+rHjyBqFM5oQvXu1soWtATC4r1V6GBnhCQQ"],["XRP","404+raHJ4Jz9PYk356wWaDMYw79B17iWtfsSMi"],["XRP","589+rfcasq9uRbvwcmLFvc4ti3j8Qt1CYCGgHz"],["XRP","41524D5900000000000000000000000000000000+rGG3wQ4kUzd7Jnmk1n5NWPZjjut62kCBfC"],["XRP","ATM+raDZ4t8WPXkmDfJWMLBcNZmmSHmBC523NZ"],["XRP","4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW"],["XRP","4249547800000000000000000000000000000000+rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3"],["XRP","BRB+rUkuT9TCDTP2oeAPsrCN7XKcHZfdvHvFkG"],["XRP","434142414C000000000000000000000000000000+rfqa9E9K5CVQCREToT4Rrzg8rgjaeWKBKJ"],["XRP","4342495244000000000000000000000000000000+rHcU3JWTp7fnea3xgvbV8pCbEp9S3HjSUz"],["XRP","434F444544000000000000000000000000000000+rnNErmg9xVmcxxNZUwivbJSH6i9GUwYPFj"],["XRP","44524F5000000000000000000000000000000000+rszenFJoDdiGjyezQc8pME9KWDQH43Tswh"],["XRP","46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62"],["XRP","4752494D00000000000000000000000000000000+rHLRdLwXiBZSD53ZQz8ogGJz25LzNCCjSz"],["XRP","477261797363616C655852500000000000000000+rGxnRqSLKey4eNAkXEphWatQe3CqYaSeLm"],["XRP","4C45444745524755590000000000000000000000+rEUo2P65TfnhksXuietsjxUFCyYiiK83F5"],["XRP","NPS+rMGGhcxk1cH8tRCF5cLbXCTFmUwSNYYM2G"],["XRP","5045524359000000000000000000000000000000+rE2HYC1jehXeE9x5ze7NLnSFmGRLAEwt3"],["XRP","50484E4958000000000000000000000000000000+rDFXbW2ZZCG5WgPtqwNiA2xZokLMm9ivmN"],["XRP","PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q"],["XRP","504F4C4943450000000000000000000000000000+rfjutsDJfakrhZUPMBe5E65S38eRZEP3yt"],["XRP","5059544800000000000000000000000000000000+rH3VAgZeSE3eWMFc3kRDxYXmYFZjCpB4on"],["XRP","5245414C00000000000000000000000000000000+rKVyXn1AhqMTvNA9hS6XkFjQNn2VE8Nz88"],["XRP","524C555344000000000000000000000000000000+rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De"],["XRP","524F434B00000000000000000000000000000000+rM2LZ53PobDBpEWZJp9cCAZhViRyy1TbyL"],["XRP","5265646479000000000000000000000000000000+rw5Kdcm1vW4xVefFafjMbevs5SL9fYP36U"],["XRP","SGB+rctArjqVvTHihekzDeecKo6mkTYTUSBNc"],["XRP","SHX+rfmS3zqrQrka8wVyhXifEeyTwe8AMz2Yhw"],["XRP","53494E474C450000000000000000000000000000+rhtmgZUbTzfH6xQKqqzF835uRVPFMqFYRe"],["XRP","SPC+rhnvCzgjfeK6Qabq7iTYcJc2h23483nriX"],["XRP","54494D4500000000000000000000000000000000+rExSpmk2PAqxKRTT3mhjCrCpqVasBra5v8"],["XRP","545249534B000000000000000000000000000000+rhu8q21DEWekDcvqakABXPJbm3MAnQa8oy"],["XRP","554E495445000000000000000000000000000000+rQKSaCbjYGdYosuPSLLTjzHN19Gwtyx4U6"],["XRP","5800000000000000000000000000000000000000+ruxT12tH2mrccHFDjnjqWyGfAxYxYMHLA"],["XRP","XAH+rswh1fvyLqHizBS2awu1vs6QcmwTBd9qiv"],["XRP","XLM+rKiCet8SdvWxPXnAgYarFUXMh1zCPz432Y"],["XRP","584F4E4500000000000000000000000000000000+rP9v5sQR5LqcB6Bk7xJSKqUoHytkHT1one"],["XRP","5852505800000000000000000000000000000000+r4tPgvSFTJYMxqLZsz9R6i2mykXUAZ6298"],["XRP","586D656E00000000000000000000000000000000+rMFL2KuFPMuiujdbVGbMzNNjj5QKyd6dZf"],["XRP","gei+raadqNCqPHhqpb5HEMBjbfFa21YYu9GWfW"],["245452554D500000000000000000000000000000+r3iM2Ffe9Krgn6n3qhHj2oe8kiJMKB63s7","4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW"],["2442424200000000000000000000000000000000+r9MqzhBGXeXiWnNwCz91Lp9jM5r2FnFgnX","4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW"],["ATM+raDZ4t8WPXkmDfJWMLBcNZmmSHmBC523NZ","4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","NPS+rMGGhcxk1cH8tRCF5cLbXCTFmUwSNYYM2G"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","BRB+rUkuT9TCDTP2oeAPsrCN7XKcHZfdvHvFkG"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","4C45444745524755590000000000000000000000+rEUo2P65TfnhksXuietsjxUFCyYiiK83F5"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","XAH+rswh1fvyLqHizBS2awu1vs6QcmwTBd9qiv"],["404+raHJ4Jz9PYk356wWaDMYw79B17iWtfsSMi","XAH+rswh1fvyLqHizBS2awu1vs6QcmwTBd9qiv"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","53494E474C450000000000000000000000000000+rhtmgZUbTzfH6xQKqqzF835uRVPFMqFYRe"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","SGB+rctArjqVvTHihekzDeecKo6mkTYTUSBNc"],["ATM+raDZ4t8WPXkmDfJWMLBcNZmmSHmBC523NZ","SGB+rctArjqVvTHihekzDeecKo6mkTYTUSBNc"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","524C555344000000000000000000000000000000+rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q"],["4245415200000000000000000000000000000000+rBEARGUAsyu7tUw53rufQzFdWmJHpJEqFW","4249547800000000000000000000000000000000+rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3"],["PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q","5852505800000000000000000000000000000000+r4tPgvSFTJYMxqLZsz9R6i2mykXUAZ6298"],["PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q","SPC+rhnvCzgjfeK6Qabq7iTYcJc2h23483nriX"],["4752494D00000000000000000000000000000000+rHLRdLwXiBZSD53ZQz8ogGJz25LzNCCjSz","PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q"],["434F444544000000000000000000000000000000+rnNErmg9xVmcxxNZUwivbJSH6i9GUwYPFj","44524F5000000000000000000000000000000000+rszenFJoDdiGjyezQc8pME9KWDQH43Tswh"],["44524F5000000000000000000000000000000000+rszenFJoDdiGjyezQc8pME9KWDQH43Tswh","46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62"],["3352444559450000000000000000000000000000+rHjyBqFM5oQvXu1soWtATC4r1V6GBnhCQQ","46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","5045524359000000000000000000000000000000+rE2HYC1jehXeE9x5ze7NLnSFmGRLAEwt3"],["41524D5900000000000000000000000000000000+rGG3wQ4kUzd7Jnmk1n5NWPZjjut62kCBfC","44524F5000000000000000000000000000000000+rszenFJoDdiGjyezQc8pME9KWDQH43Tswh"],["SGB+rctArjqVvTHihekzDeecKo6mkTYTUSBNc","5800000000000000000000000000000000000000+ruxT12tH2mrccHFDjnjqWyGfAxYxYMHLA"],["4249547800000000000000000000000000000000+rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3","46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","XLM+rKiCet8SdvWxPXnAgYarFUXMh1zCPz432Y"],["PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q","XLM+rKiCet8SdvWxPXnAgYarFUXMh1zCPz432Y"],["586D656E00000000000000000000000000000000+rMFL2KuFPMuiujdbVGbMzNNjj5QKyd6dZf","gei+raadqNCqPHhqpb5HEMBjbfFa21YYu9GWfW"],["404+raHJ4Jz9PYk356wWaDMYw79B17iWtfsSMi","4249547800000000000000000000000000000000+rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3"],["404+raHJ4Jz9PYk356wWaDMYw79B17iWtfsSMi","5800000000000000000000000000000000000000+ruxT12tH2mrccHFDjnjqWyGfAxYxYMHLA"],["4249547800000000000000000000000000000000+rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3","524C555344000000000000000000000000000000+rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De"],["524C555344000000000000000000000000000000+rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De","5265646479000000000000000000000000000000+rw5Kdcm1vW4xVefFafjMbevs5SL9fYP36U"],["41524D5900000000000000000000000000000000+rGG3wQ4kUzd7Jnmk1n5NWPZjjut62kCBfC","53494E474C450000000000000000000000000000+rhtmgZUbTzfH6xQKqqzF835uRVPFMqFYRe"],["PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q","504F4C4943450000000000000000000000000000+rfjutsDJfakrhZUPMBe5E65S38eRZEP3yt"],["PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q","SHX+rfmS3zqrQrka8wVyhXifEeyTwe8AMz2Yhw"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","gei+raadqNCqPHhqpb5HEMBjbfFa21YYu9GWfW"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q"],["4249547800000000000000000000000000000000+rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3","5852505800000000000000000000000000000000+r4tPgvSFTJYMxqLZsz9R6i2mykXUAZ6298"],["44524F5000000000000000000000000000000000+rszenFJoDdiGjyezQc8pME9KWDQH43Tswh","gei+raadqNCqPHhqpb5HEMBjbfFa21YYu9GWfW"],["41524D5900000000000000000000000000000000+rGG3wQ4kUzd7Jnmk1n5NWPZjjut62kCBfC","gei+raadqNCqPHhqpb5HEMBjbfFa21YYu9GWfW"],["589+rfcasq9uRbvwcmLFvc4ti3j8Qt1CYCGgHz","44524F5000000000000000000000000000000000+rszenFJoDdiGjyezQc8pME9KWDQH43Tswh"],["589+rfcasq9uRbvwcmLFvc4ti3j8Qt1CYCGgHz","554E495445000000000000000000000000000000+rQKSaCbjYGdYosuPSLLTjzHN19Gwtyx4U6"],["589+rfcasq9uRbvwcmLFvc4ti3j8Qt1CYCGgHz","4342495244000000000000000000000000000000+rHcU3JWTp7fnea3xgvbV8pCbEp9S3HjSUz"],["4249547800000000000000000000000000000000+rBitcoiNXev8VoVxV7pwoQx1sSfonVP9i3","5245414C00000000000000000000000000000000+rKVyXn1AhqMTvNA9hS6XkFjQNn2VE8Nz88"],["5059544800000000000000000000000000000000+rH3VAgZeSE3eWMFc3kRDxYXmYFZjCpB4on","5245414C00000000000000000000000000000000+rKVyXn1AhqMTvNA9hS6XkFjQNn2VE8Nz88"],["477261797363616C655852500000000000000000+rGxnRqSLKey4eNAkXEphWatQe3CqYaSeLm","5059544800000000000000000000000000000000+rH3VAgZeSE3eWMFc3kRDxYXmYFZjCpB4on"],["41524D5900000000000000000000000000000000+rGG3wQ4kUzd7Jnmk1n5NWPZjjut62kCBfC","PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","54494D4500000000000000000000000000000000+rExSpmk2PAqxKRTT3mhjCrCpqVasBra5v8"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","586D656E00000000000000000000000000000000+rMFL2KuFPMuiujdbVGbMzNNjj5QKyd6dZf"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","545249534B000000000000000000000000000000+rhu8q21DEWekDcvqakABXPJbm3MAnQa8oy"],["ATM+raDZ4t8WPXkmDfJWMLBcNZmmSHmBC523NZ","545249534B000000000000000000000000000000+rhu8q21DEWekDcvqakABXPJbm3MAnQa8oy"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","504F4C4943450000000000000000000000000000+rfjutsDJfakrhZUPMBe5E65S38eRZEP3yt"],["41524D5900000000000000000000000000000000+rGG3wQ4kUzd7Jnmk1n5NWPZjjut62kCBfC","504F4C4943450000000000000000000000000000+rfjutsDJfakrhZUPMBe5E65S38eRZEP3yt"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","524F434B00000000000000000000000000000000+rM2LZ53PobDBpEWZJp9cCAZhViRyy1TbyL"],["46555A5A59000000000000000000000000000000+rhCAT4hRdi2Y9puNdkpMzxrdKa5wkppR62","584F4E4500000000000000000000000000000000+rP9v5sQR5LqcB6Bk7xJSKqUoHytkHT1one"],["434142414C000000000000000000000000000000+rfqa9E9K5CVQCREToT4Rrzg8rgjaeWKBKJ","44524F5000000000000000000000000000000000+rszenFJoDdiGjyezQc8pME9KWDQH43Tswh"],["50484E4958000000000000000000000000000000+rDFXbW2ZZCG5WgPtqwNiA2xZokLMm9ivmN","PLX+rGLEgQdktoN4Be5thhk6seg1HifGPBxY5Q"]];</script>
+<script>
+"use strict";
+/* All data rendered below comes from the chain (token names especially) and is attacker-controlled:
+   it is only ever put on the page with textContent / createTextNode, never as HTML. */
+const SVGNS = "http://www.w3.org/2000/svg";
+let S = null;            // latest state
+let drawnLedger = null;  // ledger the page was last drawn for
+let sortKey = "tvl", sortDir = -1;
+
+function h(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (props || {})) {
+    if (k === "class") e.className = props[k];
+    else if (k === "text") e.textContent = props[k];
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), props[k]);
+    else e.setAttribute(k, props[k]);
+  }
+  for (const c of kids) if (c != null) e.append(c);
+  return e;
+}
+function sv(tag, attrs, text) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+const nf = (d) => new Intl.NumberFormat("en-US", { maximumFractionDigits: d, minimumFractionDigits: 0 });
+function xrp(v, d = 5) { return v == null ? "–" : (v >= 0 ? "+" : "−") + nf(d).format(Math.abs(v)); }
+function amt(v) {
+  if (v == null) return "–";
+  const a = Math.abs(v);
+  if (a >= 1e9) return nf(2).format(v / 1e9) + "B";
+  if (a >= 1e6) return nf(2).format(v / 1e6) + "M";
+  if (a >= 1e4) return nf(1).format(v / 1e3) + "K";
+  if (a >= 100) return nf(1).format(v);
+  if (a >= 1) return nf(3).format(v);
+  return new Intl.NumberFormat("en-US", { maximumSignificantDigits: 3 }).format(v);
+}
+function clock(sec) {
+  if (sec == null) return "–";
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m >= 60 ? Math.floor(m / 60) + "h " + (m % 60) + "m" : m + "m " + String(s).padStart(2, "0") + "s";
+}
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+function pathChips(labels) {
+  const box = h("div", { class: "path" });
+  labels.forEach((l, i) => {
+    if (i) box.append(h("span", { class: "arrow", text: "→" }));
+    box.append(h("span", { class: "chip" + (l === "XRP" ? " xrp" : ""), text: l }));
+  });
+  return box;
+}
+function bar() { return S.settings.min_profit + S.settings.tx_cost; }
+
+/* ---------- theme ---------- */
+const themes = ["auto", "light", "dark"];
+function applyTheme(t) {
+  if (t === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", t);
+  document.getElementById("theme").textContent = "Theme: " + t;
+}
+let theme = "auto";
+try { theme = localStorage.getItem("cw-theme") || "auto"; } catch (e) {}
+applyTheme(theme);
+document.getElementById("theme").addEventListener("click", () => {
+  theme = themes[(themes.indexOf(theme) + 1) % 3];
+  applyTheme(theme);
+  try { localStorage.setItem("cw-theme", theme); } catch (e) {}
+});
+
+/* ---------- tooltip ---------- */
+function tip(box) {
+  let t = box.querySelector(".tip");
+  if (!t) { t = h("div", { class: "tip" }); t.hidden = true; box.append(t); }
+  return t;
+}
+function placeTip(box, t, px, py) {
+  t.hidden = false;
+  const w = t.offsetWidth, W = box.clientWidth;
+  t.style.left = Math.max(0, Math.min(px + 14, W - w)) + "px";
+  t.style.top = Math.max(0, py - t.offsetHeight - 10) + "px";
+}
+
+/* ---------- charts ---------- */
+function mainChart() {
+  const box = document.getElementById("main-chart"); clear(box);
+  const n = Number(document.getElementById("span").value);
+  const rows = S.ledgers.slice(-n);
+  const W = Math.max(320, box.clientWidth), narrow = W < 560, H = 300, m = { l: 62, r: narrow ? 14 : 132, t: 22, b: 28 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const fee = S.settings.tx_cost, need = bar();
+  const vals = rows.map(r => r.best_gross_xrp).filter(v => v > 0).concat([fee, need]);
+  let d0 = Math.floor(Math.log10(Math.min(...vals))), d1 = Math.ceil(Math.log10(Math.max(...vals)));
+  if (d1 - d0 < 2) d1 = d0 + 2;
+  const y = (v) => m.t + (1 - (Math.log10(v) - d0) / (d1 - d0)) * ph;
+  const x = (i) => m.l + (i + 0.5) / Math.max(rows.length, 1) * pw;
+  const svg = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": "Best cycle gain per ledger on a log scale, with the network fee and the bar a cycle must clear" });
+  for (let k = d0; k <= d1; k++) {
+    const yy = y(Math.pow(10, k));
+    svg.append(sv("line", { class: "grid", x1: m.l, x2: m.l + pw, y1: yy, y2: yy }));
+    svg.append(sv("text", { x: m.l - 8, y: yy + 4, "text-anchor": "end" }, k >= 0 ? String(Math.pow(10, k)) : Math.pow(10, k).toFixed(-k)));
+  }
+  svg.append(sv("text", { x: m.l - 8, y: m.t - 12, "text-anchor": "end" }, "XRP"));
+  [[fee, "network fee " + nf(5).format(fee)], [need, "to clear " + nf(5).format(need)]].forEach(([v, label]) => {
+    const yy = y(v);
+    svg.append(sv("line", { class: "ref", x1: m.l, x2: m.l + pw, y1: yy, y2: yy }));
+    if (narrow) svg.append(sv("text", { class: "ref-label", x: m.l + pw, y: yy - 5, "text-anchor": "end" }, label));
+    else svg.append(sv("text", { class: "ref-label", x: m.l + pw + 8, y: yy + 4 }, label));
+  });
+  const ticks = rows.length < 2 ? 0 : Math.max(1, Math.min(narrow ? 1 : 4, Math.floor((rows.length - 1) / 2)));  // labels are ~90px wide: keep them apart
+  for (let t = 0; t <= ticks; t++) {
+    const i = ticks ? Math.round(t * (rows.length - 1) / ticks) : 0;
+    if (rows[i]) svg.append(sv("text", { x: x(i), y: H - 8, "text-anchor": t === 0 ? "start" : t === ticks ? "end" : "middle" }, nf(0).format(rows[i].ledger)));
+  }
+  rows.forEach((r, i) => {
+    if (r.best_gross_xrp > 0) {
+      const on = r.opportunities > 0;
+      svg.append(sv("circle", { cx: x(i), cy: y(r.best_gross_xrp), r: on ? 5 : 4, fill: on ? "var(--accent)" : "var(--off)",
+        stroke: "var(--surface)", "stroke-width": 2 }));
+    } else {
+      svg.append(sv("line", { x1: x(i), x2: x(i), y1: m.t + ph - 7, y2: m.t + ph, stroke: "var(--off)", "stroke-width": 2 }));
+    }
+  });
+  const cross = sv("line", { class: "cross", y1: m.t, y2: m.t + ph }); cross.style.display = "none"; svg.append(cross);
+  const t = tip(box);
+  const hit = sv("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" });
+  hit.addEventListener("mousemove", (ev) => {
+    const r0 = svg.getBoundingClientRect(), px = (ev.clientX - r0.left) * W / r0.width;
+    const i = Math.max(0, Math.min(rows.length - 1, Math.floor((px - m.l) / pw * rows.length)));
+    const r = rows[i]; if (!r) return;
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.style.display = "";
+    clear(t);
+    t.append(h("b", { text: "Ledger " + nf(0).format(r.ledger) }));
+    t.append(h("div", { text: r.best_gross_xrp > 0 ? "Best cycle gains " + nf(5).format(r.best_gross_xrp) + " XRP before the fee" : "No cycle paid at any size" }));
+    if (r.best_labels) t.append(h("div", { text: r.best_labels.join(" → ") }));
+    t.append(h("div", { text: r.opportunities + " cleared the thresholds · " + r.candidates + " paid before the fee" }));
+    placeTip(box, t, (ev.clientX - box.getBoundingClientRect().left), (ev.clientY - box.getBoundingClientRect().top));
+  });
+  hit.addEventListener("mouseleave", () => { t.hidden = true; cross.style.display = "none"; });
+  svg.append(hit);
+  box.prepend(svg);
+
+  const tb = document.getElementById("main-table"); clear(tb);
+  tb.append(h("thead", null, h("tr", null, h("th", { text: "Ledger" }), h("th", { class: "num", text: "Best gain (XRP)" }), h("th", { text: "Best cycle" }), h("th", { class: "num", text: "Cleared" }))));
+  const body = h("tbody");
+  rows.slice(-40).reverse().forEach(r => body.append(h("tr", null, h("td", { class: "num", text: String(r.ledger) }),
+    h("td", { class: "num", text: r.best_gross_xrp > 0 ? nf(5).format(r.best_gross_xrp) : "none" }),
+    h("td", { text: r.best_labels ? r.best_labels.join(" → ") : "–" }), h("td", { class: "num", text: String(r.opportunities) }))));
+  tb.append(body);
+}
+
+function barChart(id, rows, pick, opts) {
+  const box = document.getElementById(id); clear(box);
+  const vals = rows.map(pick);
+  const W = Math.max(280, box.clientWidth), narrow = W < 460, H = 150, m = { l: 40, r: opts.line != null && !narrow ? 84 : 10, t: 12, b: 22 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const top = Math.max(opts.floor, ...vals.filter((v, i) => !(opts.dim && opts.dim(rows[i])))) * 1.15;
+  const y = (v) => m.t + (1 - v / top) * ph;
+  const svg = sv("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.label });
+  const step = opts.step(top);
+  for (let v = 0; v <= top; v += step) {
+    svg.append(sv("line", { class: "grid", x1: m.l, x2: m.l + pw, y1: y(v), y2: y(v) }));
+    svg.append(sv("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end" }, nf(step < 1 ? 1 : 0).format(v)));
+  }
+  const slot = pw / Math.max(rows.length, 1), bw = Math.max(2, Math.min(24, slot - 2));
+  rows.forEach((r, i) => {
+    const v = vals[i], bx = m.l + i * slot + (slot - bw) / 2, by = y(Math.min(v, top));
+    const full = opts.dim && opts.dim(r);
+    svg.append(sv("rect", { x: bx, y: by, width: bw, height: Math.max(1, m.t + ph - by), rx: Math.min(4, bw / 2),
+      fill: full ? "var(--off)" : "var(--accent)" }));
+    if (v > top) svg.append(sv("text", { x: bx + bw / 2, y: by - 3, "text-anchor": "middle" }, String(v)));
+  });
+  if (opts.line != null) {
+    svg.append(sv("line", { class: "ref", x1: m.l, x2: m.l + pw, y1: y(opts.line), y2: y(opts.line) }));
+    if (narrow) svg.append(sv("text", { class: "ref-label", x: m.l + pw, y: y(opts.line) - 5, "text-anchor": "end" }, opts.lineLabel));
+    else svg.append(sv("text", { class: "ref-label", x: m.l + pw + 8, y: y(opts.line) + 4 }, opts.lineLabel));
+  }
+  if (rows.length) {
+    svg.append(sv("text", { x: m.l, y: H - 6 }, nf(0).format(rows[0].ledger)));
+    svg.append(sv("text", { x: m.l + pw, y: H - 6, "text-anchor": "end" }, nf(0).format(rows[rows.length - 1].ledger)));
+  }
+  const t = tip(box);
+  const hit = sv("rect", { x: m.l, y: m.t, width: pw, height: ph, fill: "transparent" });
+  hit.addEventListener("mousemove", (ev) => {
+    const r0 = svg.getBoundingClientRect(), px = (ev.clientX - r0.left) * W / r0.width;
+    const r = rows[Math.max(0, Math.min(rows.length - 1, Math.floor((px - m.l) / slot)))]; if (!r) return;
+    clear(t); t.append(h("b", { text: "Ledger " + nf(0).format(r.ledger) }), h("div", { text: opts.tip(r) }));
+    placeTip(box, t, ev.clientX - box.getBoundingClientRect().left, ev.clientY - box.getBoundingClientRect().top);
+  });
+  hit.addEventListener("mouseleave", () => { t.hidden = true; });
+  svg.append(hit);
+  box.prepend(svg);
+}
+
+/* ---------- panels ---------- */
+function renderTop() {
+  const st = S.status, pill = document.getElementById("pill");
+  const label = { connected: "Live", reconnecting: "Reconnecting", starting: "Starting", replay: "Recorded run", offline: "Server not reachable", stopped: "Stopped" }[st.state] || st.state;
+  pill.dataset.state = st.state; document.getElementById("pill-text").textContent = label;
+  pill.title = st.detail || "";
+  document.getElementById("top-ledger").textContent = st.ledger ? nf(0).format(st.ledger) : "–";
+  const banner = document.getElementById("banner");
+  const stuck = (st.state === "reconnecting" || st.state === "starting") && ((st.attempts || 0) >= 2 || (st.state === "starting" && st.uptime_s > 20 && !st.ledger && window.XrplEngine));
+  banner.hidden = !stuck;
+  if (stuck) {
+    banner.textContent = "";
+    const b = document.createElement("b"); b.textContent = "Can't reach the XRP Ledger. ";
+    banner.append(b, document.createTextNode("This page connects to public XRP Ledger servers from your browser. If it keeps failing, your network may block websockets, or the page was opened somewhere that blocks outside connections. Save the file and open it directly in your browser." + (st.detail ? " Last error: " + st.detail : "")));
+  }
+  document.getElementById("top-up").textContent = S.replay ? "recorded" : clock(st.uptime_s);
+  document.getElementById("top-up-label").textContent = S.replay ? "mode" : "running";
+}
+function kpi(id, value, note) {
+  const k = document.getElementById(id);
+  k.querySelector(".value").textContent = value; k.querySelector(".note").textContent = note || "";
+}
+function renderKpis() {
+  const k = S.kpis;
+  kpi("k-live", String(k.live), k.live ? "clearing the thresholds in the latest ledger" : "none clearing the thresholds in the latest ledger");
+  document.getElementById("k-live").dataset.on = k.live ? "1" : "0";
+  kpi("k-seen", String(k.seen), k.ended + " already ended");
+  kpi("k-life", k.median_lifetime == null ? "–" : nf(1).format(k.median_lifetime) + (k.median_lifetime === 1 ? " ledger" : " ledgers"),
+    k.median_lifetime == null ? "nothing has ended yet" : "median, about " + nf(0).format(k.median_lifetime * 3.5) + " s");
+  const b = k.best_seen;
+  kpi("k-best", b ? xrp(b.profit, 4) + " XRP" : "–", b ? nf(2).format(b.profit_pct) + "% on " + amt(b.amount_in) + " XRP · " + b.labels.slice(1, -1).join(" → ") : "no opportunity yet");
+  kpi("k-speed", k.median_after_close_s == null ? "–" : nf(2).format(k.median_after_close_s) + " s",
+    k.p90_after_close_s == null ? "" : "median; 9 in 10 within " + nf(1).format(k.p90_after_close_s) + " s");
+}
+function renderLive() {
+  const box = document.getElementById("live"); clear(box);
+  if (!S.live.length) {
+    const last = S.ledgers[S.ledgers.length - 1];
+    const e = h("div", { class: "empty", text: "No cycle clears the thresholds right now." });
+    if (last && last.best_gross_xrp > 0) e.append(h("small", { text: "Closest this ledger: " + (last.best_labels || []).join(" → ") + " would gain " + nf(5).format(last.best_gross_xrp) + " XRP before the fee; it needs " + nf(5).format(bar()) + "." }));
+    else if (last) e.append(h("small", { text: "No cycle pays at any size in the latest ledger." }));
+    box.append(e); return;
+  }
+  S.live.forEach(o => {
+    const card = h("div", { class: "opp" });
+    card.append(h("div", { class: "top" }, h("span", { class: "gain", text: xrp(o.profit, 5) + " XRP" }), h("span", { class: "pct", text: xrp(o.profit_pct, 2) + "%" }),
+      h("span", { class: "meta", text: "in " + amt(o.amount_in) + " XRP · open " + (o.last_ledger - o.first_ledger + 1) + " ledger" + (o.last_ledger === o.first_ledger ? "" : "s") })));
+    card.append(pathChips(o.labels));
+    const legs = h("ul", { class: "legs" }); legs.hidden = true;
+    o.legs.forEach((l, i) => legs.append(h("li", { text: (i + 1) + ".  " + amt(l.amount_in) + " " + l.in + "  →  " + amt(l.amount_out) + " " + l.out })));
+    const btn = h("button", { class: "btn", type: "button", "aria-expanded": "false", text: "Show legs", onclick: () => {
+      legs.hidden = !legs.hidden; btn.textContent = legs.hidden ? "Show legs" : "Hide legs"; btn.setAttribute("aria-expanded", String(!legs.hidden)); } });
+    card.append(btn, legs); box.append(card);
+  });
+}
+function renderEnded() {
+  const tb = document.getElementById("ended"); clear(tb);
+  if (!S.ended.length) { tb.append(h("tbody", null, h("tr", null, h("td", { class: "empty", text: "Nothing has ended yet." })))); return; }
+  tb.append(h("thead", null, h("tr", null, h("th", { text: "Cycle" }), h("th", { class: "num", text: "Open for" }), h("th", { class: "num", text: "Best gain" }), h("th", { class: "num", text: "Size (XRP)" }))));
+  const body = h("tbody");
+  S.ended.forEach(e => body.append(h("tr", null, h("td", { text: e.labels.slice(1, -1).join(" → ") }),
+    h("td", { class: "num", text: e.ledgers_alive + (e.ledgers_alive === 1 ? " ledger" : " ledgers") }),
+    h("td", { class: "num", text: xrp(e.best_profit, 5) }), h("td", { class: "num", text: amt(e.best_amount_in) }))));
+  tb.append(body);
+}
+function renderLog() {
+  const ul = document.getElementById("log"); clear(ul);
+  if (!S.log.length) ul.append(h("li", null, h("span", { class: "what", text: "Waiting for the first ledger." })));
+  S.log.slice(0, 80).forEach(e => ul.append(h("li", null, h("span", { class: "when", text: e.ledger ? "#" + String(e.ledger).slice(-6) : "" }), h("span", { class: "what", text: e.text }))));
+}
+function renderMarkets() {
+  const q = document.getElementById("filter").value.trim().toLowerCase();
+  const last = S.status.ledger || 0;
+  const cols = [["pair", "Pair", false], ["tvl", "Pool depth (XRP)", true], ["price", "Pool price", true], ["fee", "Fee", true], ["ab", "Offers", true], ["changed", "Last change", true]];
+  const key = {
+    pair: m => m.a + "/" + m.b, tvl: m => m.pool && m.pool.tvl_xrp != null ? m.pool.tvl_xrp : -1,
+    price: m => m.pool && m.pool.price != null ? m.pool.price : -1, fee: m => m.pool ? m.pool.fee_pct : -1,
+    ab: m => m.offers_ab + m.offers_ba, changed: m => m.changed == null ? -1 : m.changed,
+  }[sortKey];
+  const rows = S.markets.filter(m => !q || (m.a + " " + m.b).toLowerCase().includes(q))
+    .sort((p, r) => { const a = key(p), b = key(r); return (a < b ? -1 : a > b ? 1 : 0) * sortDir; });
+  const tb = document.getElementById("markets"); clear(tb);
+  const tr = h("tr");
+  cols.forEach(([k, label, num]) => tr.append(h("th", { class: "sortable" + (num ? " num" : ""), scope: "col", tabindex: "0",
+    "aria-sort": sortKey === k ? (sortDir > 0 ? "ascending" : "descending") : "none",
+    text: label + (sortKey === k ? (sortDir > 0 ? " ▲" : " ▼") : ""),
+    onclick: () => { sortDir = sortKey === k ? -sortDir : (k === "pair" ? 1 : -1); sortKey = k; renderMarkets(); },
+    onkeydown: (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); ev.target.click(); } } })));
+  tb.append(h("thead", null, tr));
+  const body = h("tbody");
+  rows.forEach(m => {
+    const row = h("tr", { class: m.in_opportunity ? "hot" : "" });
+    row.append(h("td", { text: m.a + " / " + m.b }));
+    row.append(h("td", { class: "num", text: m.pool && m.pool.tvl_xrp != null ? amt(m.pool.tvl_xrp) : m.pool ? "n/a" : "no pool" }));
+    row.append(h("td", { class: "num", text: m.pool && m.pool.price != null ? amt(m.pool.price) + " " + m.a + "/" + m.b : "–" }));
+    row.append(h("td", { class: "num", text: m.pool ? nf(3).format(m.pool.fee_pct) + "%" : "–" }));
+    row.append(h("td", { class: "num", text: m.offers_ab + " · " + m.offers_ba }));
+    const cell = h("td", { class: "num" });
+    if (m.changed == null) cell.textContent = "–";
+    else { const ago = last - m.changed; cell.append(ago <= 1 ? h("span", { class: "tag fresh", text: ago <= 0 ? "this ledger" : "1 ago" }) : h("span", { class: "tag", text: ago + " ago" })); }
+    row.append(cell); body.append(row);
+  });
+  tb.append(body);
+  document.getElementById("mk-count").textContent = rows.length + " of " + S.markets.length + " pairs";
+}
+function renderAll() {
+  renderTop(); renderKpis(); renderLive(); renderEnded(); renderLog();
+  const post = S.ledgers.filter(r => !r.full).slice(-Number(document.getElementById("span").value));
+  mainChart();
+  const lat = post.map(r => r.after_close_s), med = lat.length ? lat.slice().sort((a, b) => a - b)[Math.floor(lat.length / 2)] : null;
+  document.getElementById("lat-sub").textContent = med == null ? "Waiting for ledgers." : "Median " + nf(2).format(med) + " s. Includes reading the changed pairs from the node and re-checking every cycle.";
+  barChart("lat-chart", post, r => r.after_close_s, { floor: 1, step: t => t > 6 ? 2 : 1, label: "Seconds from ledger close to evaluated", line: med, lineLabel: med == null ? "" : "median " + nf(2).format(med) + " s", tip: r => nf(2).format(r.after_close_s) + " s (read " + nf(2).format(r.read_s) + " s)" });
+  barChart("pairs-chart", S.ledgers.slice(-Number(document.getElementById("span").value)), r => r.pairs_read, { floor: 4, step: t => t > 40 ? 20 : t > 16 ? 8 : 4, label: "Pairs re-read per ledger", dim: r => r.full, tip: r => r.pairs_read + (r.full ? " pairs (full refresh)" : " pairs changed") });
+  renderMarkets();
+  const st = S.settings;
+  document.getElementById("settings").textContent = "profit at least " + st.min_profit + " XRP and " + st.min_profit_pct + "% after a " + st.tx_cost + " XRP fee, up to " + st.max_legs + " legs, at most " + st.max_xrp + " XRP per cycle" + (st.account ? ", fee discount for " + st.account : "") + ".";
+}
+
+/* ---------- data ---------- */
+async function poll() {
+  try {
+    const res = await fetch("/api/state", { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    S = await res.json();
+  } catch (e) {
+    if (S) { S.status = { ...S.status, state: "offline", detail: String(e) }; renderTop(); }
+    else { const p = document.getElementById("pill"); p.dataset.state = "offline"; document.getElementById("pill-text").textContent = "Server not reachable"; }
+    return;
+  }
+  draw();
+}
+document.getElementById("filter").addEventListener("input", () => S && renderMarkets());
+document.getElementById("span").addEventListener("change", () => S && renderAll());
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => S && renderAll(), 150); });
+function draw() {
+  const sig = (S.status.ledger || 0) + ":" + S.status.state + ":" + S.log.length;
+  if (sig !== drawnLedger) { drawnLedger = sig; renderAll(); } else renderTop();
+}
+function startEngine() {
+  // no server: the page reads the XRP Ledger itself, from this browser
+  const eng = window.XrplEngine.create({ pairs: window.__PAIRS__, settings: window.XrplEngine.settingsFromHash(location.hash), onUpdate: () => { S = eng.snapshot(); draw(); } });
+  S = eng.snapshot(); draw();
+  eng.start();
+  setInterval(() => { S = eng.snapshot(); renderTop(); }, 1000);
+}
+if (window.__STATE__) { S = window.__STATE__; renderAll(); }   // a recorded run embedded in the page: no server to poll
+else if (window.XrplEngine && window.__PAIRS__) startEngine();
+else { poll(); setInterval(poll, 1000); }
+</script>
+</body>
+</html>
