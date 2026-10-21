@@ -8,7 +8,7 @@ across several steps is priced from the pool state after the previous step."""
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
 from .assets import Asset

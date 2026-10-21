@@ -36,7 +36,6 @@ class LiveExecutor(Executor):
     def __init__(self, cfg, base: Asset, state, rpc: Rpc, seed: str, max_session_loss: float | None = None):
         super().__init__(base, state)
         try:
-            from xrpl.core.binarycodec import encode  # noqa: F401
             from xrpl.models.transactions import Payment  # noqa: F401
             from xrpl.transaction import sign  # noqa: F401
             from xrpl.wallet import Wallet

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 import threading
 import time
 import webbrowser
@@ -67,7 +66,6 @@ def main(argv: list[str] | None = None) -> int:
     assets = cfg.assets()
     rpc = Rpc(tuple(args.rpc) if args.rpc else DEFAULT_RPC)
     mode = "live" if args.trade_live else "paper"
-    log_sink: list = []
     state = BotState(cfg, mode, "demo" if args.demo else "xrpl", node="synthetic" if args.demo else rpc.url)
     state.names = {a.key: n for n, a in KNOWN.items()}
 
@@ -107,7 +105,6 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("aborted")
 
     if args.ledgers:
-        seen = 0
         t = threading.Thread(target=bot.run, args=(stop,), daemon=True)
         t.start()
         try:

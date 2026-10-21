@@ -6,7 +6,6 @@ import threading
 import time
 import traceback
 
-from .assets import Asset
 from .config import KNOWN, Config
 from .feed import Snapshot
 from .liquidity import pool_key
@@ -14,8 +13,6 @@ from .paper import fee_in_base
 from .plan import threshold
 from .routes import Evaluation, Route, find_routes, optimize
 from .state import BotState
-
-SERIES_EVERY = 1  # ledgers between chart points
 
 
 class Bot:

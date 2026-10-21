@@ -4,13 +4,12 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
-from dataclasses import replace
 
 from xrpl_arb.assets import Asset, amount_json, amount_value, fmt_iou, to_drops
 from xrpl_arb.bot import Bot
 from xrpl_arb.config import KNOWN, Config
 from xrpl_arb.feed import DemoFeed, Snapshot, parse_offers, parse_pool
-from xrpl_arb.liquidity import Hop, Offer, Pool, amm_out, amm_take_to_price, pool_key
+from xrpl_arb.liquidity import Hop, Offer, Pool, amm_out, amm_take_to_price
 from xrpl_arb.paper import PaperExecutor
 from xrpl_arb.plan import Result, run_plan
 from xrpl_arb.routes import Route, evaluate, find_routes, optimize
