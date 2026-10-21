@@ -70,10 +70,11 @@ Not checked:
 
 ## What a live run found (Oct 2026, one public server, 98 pairs, 4-leg limit, 25 XRP cap, 0.001 XRP / 0.25% thresholds)
 
-Two runs, 29 scans in total (about 12 minutes of ledgers). Treat it as a small sample, not a measurement of the market.
+Two runs, 29 scans over about 230 ledgers (roughly 13 minutes). Treat it as a small sample, not a measurement of the market.
 
-- 27 scans found nothing that passes the thresholds. 24 of 29 scans did have a cycle that pays before the 0.0001 XRP
-  fee, but only by 0.00003 to 0.00015 XRP at its best size (0.007 to 0.4 XRP in): fee-sized dust.
+- 27 scans found nothing that passes the thresholds. In the second run (15 scans; the first run did not record this)
+  every scan had a cycle that pays before the 0.0001 XRP fee, but in the 13 that found nothing the best gained only
+  0.00003 to 0.00015 XRP at its best size (0.007 to 0.4 XRP in): fee-sized dust.
 - 2 scans (both in the second run) each showed a burst of overlapping cycles that passed: 5 cycles at ledger
   107798500 (0.0011 to 0.0015 XRP, 2.4% to 3.1% on about 0.05 XRP) and 10 at ledger 107798590 (up to 0.0066 XRP, 2.6%
   on 0.26 XRP), through XRPX, BITx, PLX and GRIM. The cycles in a burst share legs, so each burst is one mispricing, not
