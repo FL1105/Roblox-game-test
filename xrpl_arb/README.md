@@ -4,7 +4,7 @@ Finds `XRP -> token -> ... -> XRP` cycles across the XRP Ledger's order books an
 would return after fees. **Read-only: it holds no key and builds no transaction.** Standard library only.
 
 ```
-python -m unittest tests.test_xrpl_arb                                      # 51 tests, no network
+python -m unittest tests.test_xrpl_arb                                      # 53 tests, no network
 python -m xrpl_arb scan --config xrpl_arb/markets.example.json              # one scan
 python -m xrpl_arb scan --config pairs.json --loop 10 --out data/xrpl.jsonl # every 10 s, recorded
 ```
@@ -35,6 +35,9 @@ spec to copy; what the page's public JSON feeds show about the bot (self-reporte
    input, so a cycle can only pay if the product of its legs' spot rates exceeds 1 (a cheap exact filter), and the
    best input size is found by golden-section search. XRP is rounded down to whole drops.
 4. **Report**: profit is net of `--tx-cost`; a cycle must clear `--min-profit` (XRP) and `--min-profit-pct`.
+   A scan that finds nothing says how close it came: the best cycle at its best size ("best below your
+   thresholds"), or, if nothing pays at any size, the nearest cycle's return. With `--out`, every scan is a
+   JSONL row (ledger, counts, near miss) and every opportunity its own row with the legs.
 
 Config is JSON: `{"assets": ["USD+rIssuer", "DROP+rIssuer", ...]}` pairs every asset with XRP and with each other
 (cost grows with the square of the list), or `{"pairs": [["XRP", "DROP+r..."], ["DROP+r...", "PLX+r..."]]}` for an
@@ -43,19 +46,27 @@ for you. Every issuer address is checksum-validated before any request.
 
 ## What was checked against mainnet, and what wasn't
 
-Checked (using `ripple_path_find`, the ledger's own payment engine, pinned to the same ledger as the snapshot):
+Method: quote spending N XRP on a token with the model, then ask `ripple_path_find` (the ledger's own payment
+engine, pinned to the same ledger as the snapshot) what delivering that amount costs. 96 comparisons: DROP, PLX, ATM
+and FUZZY at 2, 10 and 50 XRP over 8 different ledgers, plus single-ledger probes up to 100 XRP.
 
-- Response shapes (`book_offers`, `amm_info`, `account_info`) parse correctly on live data.
-- For XRP -> DROP, the model's output matches what the ledger says it costs to deliver that amount to within
-  1e-6 (relative) at 0.5, 5, 20 XRP, 0.009% at 10 XRP and 0.001% at 100 XRP, and it never promised more than the
-  ledger delivers. At 0.1, 1 and 2 XRP the ledger was up to 0.2% cheaper (likely a better multi-hop route).
+- Response shapes (`book_offers`, `amm_info`, `account_info`) parse correctly on live data. Two bugs only real data
+  could show (a `null` auction-slot list, a snapshot that spanned several ledgers) were found and fixed this way.
+- **Model too generous** (it would report an edge the ledger won't give): usually under 0.02%; worst seen +0.24%
+  (PLX, 50 XRP, one ledger), +0.057% at 100 XRP in a pure-pool case. The default `--min-profit-pct 0.25` sits just
+  above that worst case. It is a margin from 96 samples, not a guarantee.
+- **Model too pessimistic**: the engine was up to 0.94% cheaper in some ledgers. Cause found: it routes through
+  another token (FUZZY via gei, POLICE, 3RDEYE or WIND). That is a better *buy* route, not an arbitrage on its own,
+  since the return leg through the direct pool pays another 0.63% fee.
 - A slot holder's quotes were cheaper by exactly the trading fee minus the discounted fee (0.393% - 0.039%).
+- 72% of the 96 comparisons were within 0.05% either way.
 
 Not checked:
 
-- Larger trades (the test wallet couldn't fund path-finding above 100 XRP), and multi-leg cycles against the engine.
-- Whether pools pay the issuer's transfer fee. The model charges it (conservative: it can only under-report).
-- Rounding inside the ledger on very small amounts.
+- Whole closed cycles (`path_find` does not search XRP -> ... -> XRP loops), so multi-leg cycles are validated leg by
+  leg, not end to end.
+- Trades above 100 XRP (the test wallet could not fund path-finding above that).
+- Whether pools pay the issuer's transfer fee. The model charges it (conservative).
 
 ## Limits you should know about
 

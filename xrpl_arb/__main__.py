@@ -16,7 +16,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from .client import DEFAULT_URLS, XrplClient, XrplError
-from .cycles import Opportunity, scan
+from .cycles import Opportunity, candidates, closest, passes
 from .model import Asset, is_valid_address
 from .snapshot import RateCache, take_snapshot
 
@@ -47,20 +47,31 @@ def describe(opp: Opportunity) -> str:
 def one_scan(client: XrplClient, config, rates: RateCache, args, sink) -> list[Opportunity]:
     assets, pairs = config
     snap = take_snapshot(client, assets, rates, args.book_limit, pairs, args.workers, args.account)
-    opps = scan(snap.markets, max_xrp=Decimal(str(args.max_xrp)), tx_cost=Decimal(str(args.tx_cost)),
-                min_profit=Decimal(str(args.min_profit)), min_profit_pct=Decimal(str(args.min_profit_pct)),
-                max_legs=args.max_legs)
+    min_profit, min_pct = Decimal(str(args.min_profit)), Decimal(str(args.min_profit_pct))
+    cands = candidates(snap.markets, max_xrp=Decimal(str(args.max_xrp)), tx_cost=Decimal(str(args.tx_cost)),
+                       max_legs=args.max_legs)
+    opps = [o for o in cands if passes(o, min_profit, min_pct)]
     now = round(time.time(), 1)
     note = "" if snap.consistent else " (some reads fell back to a newer ledger)"
     note += f" ({len(snap.skipped)} unreadable responses skipped)" if snap.skipped else ""
     print(f"ledger {snap.ledger}: {snap.books} books with offers, {snap.pools} pools, {len(opps)} opportunities{note}", flush=True)
-    for line in snap.skipped[:5]:
-        print(f"  skipped {line}", file=sys.stderr, flush=True)
     for opp in opps:
         print(describe(opp), flush=True)
+    near = None  # how close a scan that found nothing came, so "0" can be told from "almost"
+    if not opps and cands:
+        print("  best below your thresholds: " + describe(cands[0]).lstrip(), flush=True)
+        near = cands[0]
+    elif not opps:
+        spot = closest(snap.markets, args.max_legs)
+        if spot:
+            print(f"  nothing pays at any size; nearest cycle returns {spot[0]:+.3f}% at vanishing size: "
+                  f"{' -> '.join(m.asset_in.short() for m in spot[1])} -> XRP", flush=True)
+    for line in snap.skipped[:5]:
+        print(f"  skipped {line}", file=sys.stderr, flush=True)
     if sink:
         rows = [{"type": "scan", "t": now, "ledger": snap.ledger, "consistent": snap.consistent,
-                 "books": snap.books, "pools": snap.pools, "skipped": len(snap.skipped), "opportunities": len(opps)}]
+                 "books": snap.books, "pools": snap.pools, "skipped": len(snap.skipped), "opportunities": len(opps),
+                 "candidates": len(cands), "best_below_thresholds": near.to_json() if near else None}]
         rows += [{"type": "opp", "t": now, "ledger": snap.ledger, **o.to_json()} for o in opps]
         sink.write("".join(json.dumps(r) + "\n" for r in rows))
         sink.flush()
@@ -81,8 +92,9 @@ def main(argv=None, client: XrplClient | None = None) -> int:
     s.add_argument("--tx-cost", type=float, default=0.0001,
                    help="network fee in XRP charged to each cycle (the site's bot pays 40-111 drops per batch)")
     s.add_argument("--min-profit", type=float, default=0.001, help="minimum profit in XRP after the fee")
-    s.add_argument("--min-profit-pct", type=float, default=0.1,
-                   help="minimum profit as %% of the input: the margin for the ledger moving before a payment lands")
+    s.add_argument("--min-profit-pct", type=float, default=0.25,
+                   help="minimum profit as %% of the input. The default sits above the worst over-estimate seen against "
+                   "the ledger's own quotes (0.24%%); it is also the margin for the ledger moving before a payment lands")
     s.add_argument("--book-limit", type=int, default=60, help="offers read per order book")
     s.add_argument("--workers", type=int, default=6, help="parallel requests per scan")
     s.add_argument("--account", help="the wallet that would trade: it pays an AMM's discounted fee where it holds, or is "

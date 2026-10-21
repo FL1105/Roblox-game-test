@@ -10,7 +10,7 @@ from unittest import mock
 
 from xrpl_arb.__main__ import main
 from xrpl_arb.client import XrplClient, XrplError
-from xrpl_arb.cycles import best_size, find_cycles, run_cycle, scan
+from xrpl_arb.cycles import best_size, closest, find_cycles, run_cycle, scan
 from xrpl_arb.liquidity import Market, Offer, Pool, _amm_in_to_price
 from xrpl_arb.model import XRP, Asset, amount_value, floor_drop, is_valid_address
 from xrpl_arb.snapshot import RateCache, parse_offers, parse_pool, take_snapshot
@@ -202,6 +202,14 @@ class Cycles(unittest.TestCase):
         self.assertAlmostEqual(float(opp.amount_in), 100, places=4)
         self.assertAlmostEqual(float(opp.profit), 12.5 - 0.00002, places=4)
         self.assertEqual([l.amount_in for l in opp.legs][1:], [l.amount_out for l in opp.legs][:-1])  # legs chain
+
+    def test_closest_reports_distance_to_profit(self):
+        near = closest(triangle(xrp_per_eur="2.0"))  # 0.5 * 0.9 * 2.0 = 0.9
+        self.assertAlmostEqual(float(near[0]), -10.0, places=6)
+        self.assertEqual([m.asset_in for m in near[1]], [XRP, USD, EUR])
+        self.assertAlmostEqual(float(closest(triangle())[0]), 12.5, places=6)  # 1.125 is a profit
+        self.assertIsNone(closest({}))
+        self.assertIsNone(closest({(XRP, USD): mk(XRP, USD, [(1, 1)])}))  # no way back to XRP
 
     def test_no_arbitrage_when_product_of_rates_is_below_one(self):
         self.assertEqual(scan(triangle(xrp_per_eur="2.0"), **SCAN), [])  # 0.5 * 0.9 * 2.0 = 0.9
@@ -547,11 +555,25 @@ class Cli(unittest.TestCase):
 
     def test_a_quiet_market_records_only_the_scan_row(self):
         log = os.path.join(self.tmp.name, "opps.jsonl")
-        ledger = FakeLedger(books={(XRP, USD): [(100, 50)], (USD, XRP): [(50, 100)]})
+        ledger = FakeLedger(books={(XRP, USD): [(100, 50)], (USD, XRP): [(50, 90)]})  # round trip returns 90%
         code, text = self.run_main(["scan", "--config", self.cfg, "--out", log], ledger)
         self.assertEqual(code, 0)
         self.assertIn("0 opportunities", text)
-        self.assertEqual([r["type"] for r in self.rows(log)], ["scan"])
+        self.assertIn("nothing pays at any size; nearest cycle returns -10.000%", text)  # "none" vs "almost"
+        rows = self.rows(log)
+        self.assertEqual([r["type"] for r in rows], ["scan"])
+        self.assertEqual((rows[0]["candidates"], rows[0]["best_below_thresholds"]), (0, None))
+
+    def test_a_cycle_that_misses_the_thresholds_is_reported_as_the_near_miss(self):
+        log = os.path.join(self.tmp.name, "opps.jsonl")
+        code, text = self.run_main(["scan", "--config", self.cfg, "--out", log, "--min-profit", "50"], triangle_ledger())
+        self.assertEqual(code, 0)
+        self.assertIn("0 opportunities", text)
+        self.assertIn("best below your thresholds: +12.49", text)
+        rows = self.rows(log)
+        self.assertEqual([r["type"] for r in rows], ["scan"])  # not recorded as an opportunity
+        self.assertEqual(rows[0]["candidates"], 1)
+        self.assertAlmostEqual(float(D(rows[0]["best_below_thresholds"]["profit"])), 12.5, places=3)
 
     def test_config_with_pairs_reads_only_those_pairs(self):
         with open(self.cfg, "w") as f:

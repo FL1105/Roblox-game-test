@@ -123,9 +123,26 @@ def best_size(cycle: tuple[Market, ...], max_in: Decimal) -> Decimal:
     return x if x > 0 and run_cycle(cycle, x) - x > 0 else ZERO
 
 
-def scan(markets: Mapping[tuple[Asset, Asset], Market], *, max_xrp: Decimal, tx_cost: Decimal,
-         min_profit: Decimal, min_profit_pct: Decimal, max_legs: int = 4) -> list[Opportunity]:
-    """Profitable cycles, best first. Profit is net of `tx_cost`; both thresholds must be met."""
+def closest(markets: Mapping[tuple[Asset, Asset], Market], max_legs: int = 4) -> tuple[Decimal, tuple[Market, ...]] | None:
+    """The cycle nearest to profitable: its return at vanishing size, as a percentage (-0.3 means it loses 0.3%
+    before the network fee), and the cycle. This is the best any trade size could do, so a negative number
+    means no size pays. None if the markets contain no cycle."""
+    best = None
+    with localcontext() as ctx:
+        ctx.prec = 40
+        for cycle in find_cycles(markets, XRP, max_legs):
+            rate = ONE
+            for m in cycle:
+                rate *= m.spot_rate()
+            if best is None or rate > best[0]:
+                best = (rate, cycle)
+    return None if best is None else ((best[0] - ONE) * 100, best[1])
+
+
+def candidates(markets: Mapping[tuple[Asset, Asset], Market], *, max_xrp: Decimal, tx_cost: Decimal,
+               max_legs: int = 4) -> list[Opportunity]:
+    """Every cycle that returns more than it costs at its best size (before any threshold), best net profit first.
+    `profit` is net of `tx_cost`, so a cycle that gains less than the fee shows a negative profit."""
     found: list[Opportunity] = []
     with localcontext() as ctx:
         ctx.prec = 40
@@ -140,8 +157,17 @@ def scan(markets: Mapping[tuple[Asset, Asset], Market], *, max_xrp: Decimal, tx_
                 continue
             legs: list[Leg] = []
             out = run_cycle(cycle, x, legs)
-            opp = Opportunity(tuple(legs), x, out, tx_cost)
-            if opp.profit >= min_profit and opp.profit_pct >= min_profit_pct:
-                found.append(opp)
+            found.append(Opportunity(tuple(legs), x, out, tx_cost))
     found.sort(key=lambda o: o.profit, reverse=True)
     return found
+
+
+def passes(opp: Opportunity, min_profit: Decimal, min_profit_pct: Decimal) -> bool:
+    return opp.profit >= min_profit and opp.profit_pct >= min_profit_pct
+
+
+def scan(markets: Mapping[tuple[Asset, Asset], Market], *, max_xrp: Decimal, tx_cost: Decimal,
+         min_profit: Decimal, min_profit_pct: Decimal, max_legs: int = 4) -> list[Opportunity]:
+    """Profitable cycles, best first. Profit is net of `tx_cost`; both thresholds must be met."""
+    return [o for o in candidates(markets, max_xrp=max_xrp, tx_cost=tx_cost, max_legs=max_legs)
+            if passes(o, min_profit, min_profit_pct)]
