@@ -1,0 +1,51 @@
+PRE-REGISTRATION v2: a stacked model that uses the market price as its base
+Written 2026-10-21, after Report 1 (preliminary) and before any v2 model was fitted or any holdout market was downloaded.
+Report 1 showed that the gap/volatility model of PREREGISTERED.txt is worse than the market's own mid-price
+(Brier 0.0773 vs 0.0722) and loses money; all five v1 strategies showed no edge. This file is a NEW hypothesis,
+decided with Report 1 in view, so it is tested only on data Report 1 never touched.
+
+QUESTION
+Do the Coinbase gap, the 3-minute market momentum, the last-trade-versus-mid imbalance and the 3-minute BTC momentum
+add information to the market's own price at 2 minutes left? And if so, enough to beat the spread and fee?
+
+DATA SPLIT (fixed by date, before any holdout data is read)
+- DEV (training; Report 1 already saw it): close time in [2025-12-10, 2026-01-04) or [2026-08-21, now), restricted to
+  the markets already downloaded.
+- HOLDOUT (never seen): settled markets with close time in [2026-01-04, 2026-08-21). A deterministic sample: sort that
+  range by close time and take every 4th market (position % 4 == 0). Sampling uses no prices or outcomes.
+- The model is fitted once on DEV and frozen. The holdout is scored once. Nothing is re-fitted or tuned after seeing it.
+
+ENTRY, FILLS, FEES: identical to PREREGISTERED.txt and Amendments 1 and 2 (quote at the close of the candle ending
+120 s before close; buy at the ask; 10 contracts taker; quadratic fee; the market's recorded result).
+
+MODEL: logistic regression, probability that the market resolves YES
+  logit(p) = b0 + b1*x1 + b2*x2 + b3*x3 + b4*x4 + b5*x5
+  x1 = logit(clip(mid/100, 0.005, 0.995))                          the market (b1 = 1, b0 = 0 would mean the market is calibrated)
+  x2 = clip(ln(spot_entry/spot_open) / (sigma * sqrt(tau_eff)), -6, 6)   the v1 gap z-score (same sigma and tau_eff as v1)
+  x3 = x1 - logit(clip(mid_3min_earlier/100, 0.005, 0.995))       market momentum
+  x4 = (last_trade - mid) / 100, 0 if no trade in that minute      aggressor side
+  x5 = clip(ln(spot_entry/spot_3min_earlier) / (sigma * sqrt(3)), -6, 6)   BTC momentum in sigma units
+x2..x5 are standardised with the DEV mean and standard deviation. Ridge penalty lambda = 1.0 on b2..b5 only (b0, b1 free).
+Fitted by Newton / IRLS on DEV. No feature selection, no lambda search, no other variants: this is the only model.
+Markets missing any input (no BTC data, no earlier quote) are excluded and counted.
+
+PRE-REGISTERED TESTS (on HOLDOUT, once)
+ H_F (forecast)  Mean per-market log loss of the stacked model is lower than that of the raw mid-price. Paired difference,
+                 one-sided normal p; pass at p < 0.01. Also reported against a calibration-only model (x1 alone, fitted on
+                 DEV), so calibration and new information can be told apart. That comparison is secondary, no verdict.
+ H_T (trading)   stack_edge: compute p from the model; for each side, edge = 100*p_side - price - fee (cents per contract);
+                 buy the side with the larger edge if it is at least 2.0 cents. Holdout trades >= 300, mean P&L per contract
+                 > 0 with one-sided p < 0.01, and the DEV in-sample mean P&L also > 0. Otherwise "no edge shown".
+Both are reported whatever happens. H_F can pass while H_T fails (information too small to pay the spread and fee);
+that outcome is the expected one for an efficient market and is a legitimate finding.
+
+ALSO REPORTED (no verdict): fitted coefficients with standard errors; the five v1 strategies on the holdout; the
+stack_edge threshold at 0, 1, 2, 3, 5, 8 cents; holdout P&L by calendar month.
+
+FINAL v1 VERDICT (per Amendment 2): one run of the v1 report on DEV plus the sampled HOLDOUT, with the unchanged 60/40
+time split and decision rule. It is run once after the holdout is downloaded.
+
+KNOWN LIMITATIONS
+The model is fitted on data that includes August to October 2026 and scored on January to August 2026, so it is not a
+walk-forward test; a pass would still need a forward test before any real use. The holdout is a 1-in-4 sample, which
+reduces power: at ~5,500 markets the smallest detectable edge for a trend-type trade is roughly 1.5 cents per contract.
