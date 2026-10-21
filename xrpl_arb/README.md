@@ -8,11 +8,11 @@ python -m unittest tests.test_xrpl_arb tests.test_xrpl_ui                    # 8
 python -m xrpl_arb scan --config xrpl_arb/markets.example.json              # one scan
 python -m xrpl_arb scan --config pairs.json --loop 10 --out data/xrpl.jsonl # poll every 10 s, recorded
 python -m xrpl_arb watch --config pairs.json --out data/xrpl_watch.jsonl    # react to every ledger close
-python -m xrpl_arb ui --config pairs.json                                   # the same, with a dashboard
+python -m xrpl_arb ui --config xrpl_arb/pairs.mainnet.json                  # the same, with a dashboard
 python -m xrpl_arb ui --config pairs.json --replay data/xrpl_watch.jsonl    # look at a recording
 ```
 
-`watch` and `ui` need `pip install websockets` (the only dependency, same as the rest of the repo's live tools).
+`xrpl_arb/pairs.mainnet.json` is the 98-pair set used in the live runs. `watch` and `ui` need `pip install websockets` (the only dependency, same as the rest of the repo's live tools).
 
 ## What lab.bwif.meme is (and isn't)
 
