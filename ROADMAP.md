@@ -39,3 +39,22 @@ Status key: DONE / NOW / NEXT / NEEDS YOU / ONLY IF EARNED
 - Entries happen several seconds after launch; a faster bot would see earlier prices.
 - Evidence so far (1,154 launches): blind sniping loses even with zero transaction cost, and nothing tried has beaten costs on unseen launches.
 - The engine keeps the full price history of every token it has seen; a server that runs for days will need that pruned (not done yet).
+
+## Other projects (separate from the Solana work above)
+
+### XRPL arbitrage bot (`xrpl_arb/`)
+- DONE   Scanner, pool+book liquidity model (checked against the ledger's own `simulate`), shared leg-by-leg trade policy, paper executor, live dashboard, opt-in live executor (not run with real funds), 75 tests. See `xrpl_arb/README.md`.
+- DONE   First real-data run: 173 mainnet ledgers, 1,720 cycle evaluations, none profitable, best edge -1.4 bps (XRP -> RLUSD -> XRP).
+- NOW    Replay real ledger history (full-history servers keep every past book and pool) to see how often, how big and how long-lived any edge has been, instead of waiting live.
+- NEXT   Record every ledger's best edges to a file for long unattended runs.
+- NEEDS YOU  Live trading stays off until a replay or a long paper run shows an edge that survives the late-leg model.
+
+### Parked ideas
+- IDEA (2026-10-21, not started)  Market making on Polymarket's 5-minute Bitcoin Up/Down markets. Source: a tweet describing the wallet `norm1e69`. It is market making, not arbitrage.
+  - What the public trade data shows (last ~11,000 fills, 778 markets): quotes follow the price (only 7.5% of fills at 46-50c, 28% of dollars at 80c+), both sides bought in 84% of markets, average Up + Down price 0.95 (median 0.98, under $1.00 in 60% of markets), ~15% of shares left unmatched (directional risk), median fill $12. The tweet's "static 48c/48c" is a simplification.
+  - Profit claim: plausible, not verified. Polymarket's leaderboard shows +$34.7k over 7 days on $4.6M volume and +$179k over 30 days (about 0.8-0.9% of volume); its all-time figure ($49.9k) contradicts its own 30-day figure, so $315k and "73 green days of 74" are unconfirmed.
+  - Why it can work: the markets use a taker-only fee (rate 0.07) with a 20% maker rebate, plus liquidity rewards (quotes within 4.5c, min 50 shares). Risks: adverse selection when BTC trends, thin margin, competition, real money.
+  - Reproduce: `gamma-api.polymarket.com/public-search?q=<name>` gives the wallet; `data-api.polymarket.com/v1/leaderboard?user=<wallet>&timePeriod=WEEK|MONTH|ALL`, `/trades?user=<wallet>&limit=1000&offset=N` (history depth stops near offset 11,000), `gamma-api.polymarket.com/markets?slug=<slug>` for the fee schedule. Send a browser User-Agent.
+  - Plan if pursued: read-only recorder of order books and trades for the BTC 5-minute markets, then a paper market maker (no historical order-book depth exists, so fill modelling stays approximate until days are recorded). No live code.
+  - NEEDS YOU: check Polymarket is available in your jurisdiction and its terms before any step that touches money; go-ahead to build the recorder.
+
