@@ -8,7 +8,8 @@ import time
 import urllib.error
 import urllib.request
 
-COOL_OFF_S = 20.0  # a server that just failed is tried last for this long
+COOL_OFF_S = 20.0  # a server that just failed is tried last for this long; each further failure in a row doubles it
+MAX_COOL_OFF_S = 600.0
 RETRY_PAUSE_S = 0.25
 TRANSIENT = ("slowDown", "tooBusy", "noNetwork", "noCurrent", "noClosed")
 
@@ -25,6 +26,7 @@ class Rpc:
             raise ValueError("need at least one server URL")
         self.urls, self.timeout = list(urls), timeout
         self._bad_until = {u: 0.0 for u in self.urls}
+        self._fails = {u: 0 for u in self.urls}  # failures in a row, per server
         self._lock = threading.Lock()
 
     @property
@@ -39,7 +41,12 @@ class Rpc:
 
     def _fail(self, url: str) -> None:
         with self._lock:
-            self._bad_until[url] = time.time() + COOL_OFF_S
+            self._fails[url] += 1
+            self._bad_until[url] = time.time() + min(COOL_OFF_S * 2 ** (self._fails[url] - 1), MAX_COOL_OFF_S)
+
+    def _ok(self, url: str) -> None:
+        with self._lock:
+            self._fails[url] = 0
 
     def _post(self, url: str, body: bytes) -> dict:
         req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "User-Agent": "xrpl-arb"})
@@ -70,5 +77,6 @@ class Rpc:
                         self._fail(url)
                         break
                     raise RpcError(result.get("error", "unknown"), result.get("error_message", ""))
+                self._ok(url)
                 return result
         raise OSError(f"all XRPL servers failed: {last}")

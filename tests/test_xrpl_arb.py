@@ -486,6 +486,31 @@ class RpcFailover(unittest.TestCase):
         self.assertEqual(rpc.url, good)  # the failed server is put at the back for a while
         self.assertEqual(rpc.call("ping")["x"], 1)
 
+    def test_a_server_that_keeps_failing_is_avoided_for_longer_each_time(self):
+        import time
+
+        rpc = self.rpc_mod.Rpc(("http://a.invalid", "http://b.invalid"))
+        waits = []
+        for _ in range(4):
+            rpc._fail("http://a.invalid")
+            waits.append(rpc._bad_until["http://a.invalid"] - time.time())
+        for shorter, longer in zip(waits, waits[1:]):
+            self.assertGreater(longer, shorter * 1.8)
+        self.assertEqual(rpc.url, "http://b.invalid")
+        for _ in range(20):
+            rpc._fail("http://a.invalid")
+        self.assertLessEqual(rpc._bad_until["http://a.invalid"] - time.time(), self.rpc_mod.MAX_COOL_OFF_S + 1)
+
+    def test_a_success_clears_the_failure_streak(self):
+        good = self.serve(self.ok(x=1))
+        rpc = self.rpc_mod.Rpc((good,))
+        rpc._fail(good)
+        rpc._fail(good)
+        self.assertEqual(rpc._fails[good], 2)
+        rpc._bad_until[good] = 0.0
+        rpc.call("ping")
+        self.assertEqual(rpc._fails[good], 0)
+
     def test_a_momentary_failure_is_retried_on_the_same_server(self):
         n = []
 
