@@ -40,6 +40,8 @@ class Quote:
     strike_type: str = ""
     strike: float | None = None   # floor_strike for greater-type, cap_strike for less-type markets
     rules: str = ""
+    yes_name: str = ""            # what YES means when it is a named outcome (a team, a candidate)
+    kind: str = ""                # venue-specific market type, e.g. Polymarket's sportsMarketType
 
     @property
     def no_ask(self) -> float | None:

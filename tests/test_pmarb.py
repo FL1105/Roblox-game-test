@@ -145,3 +145,28 @@ class Cross(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WatchSummary(unittest.TestCase):
+    def row(self, t, label, net, gross=0.0, maker=0.0, kind="game"):
+        return {"t": t, "label": label, "kind": kind, "k_bid": 0.4, "k_ask": 0.42, "p_bid": 0.41, "p_ask": 0.43,
+                "gross": gross, "maker_edge": maker, "net": net, "qty": 10, "fees": 0.1}
+
+    def test_episodes_count_consecutive_polls_and_take_the_best_moment(self):
+        from pmarb.summary import episodes
+        rows = [self.row(1, "a", -1), self.row(2, "a", 2.0), self.row(3, "a", 5.0), self.row(4, "a", -1), self.row(5, "a", 1.0),
+                self.row(1, "b", -1), self.row(2, "b", -1), self.row(3, "b", -1)]
+        eps = sorted(episodes(rows, "net", lambda r: r["net"] > 0))
+        self.assertEqual(eps, [("a", 1, 1.0), ("a", 2, 5.0)])
+
+    def test_summary_separates_kinds_and_counts_fee_survivors(self):
+        from pmarb.summary import summarise
+        rows = [self.row(1, "a", -0.5, gross=0.01, maker=0.02), self.row(2, "a", -0.4, gross=0.0, maker=0.0),
+                self.row(1, "b", 3.0, gross=0.08, kind="btc15"), self.row(2, "b", None, gross=None, maker=None, kind="btc15")]
+        s = summarise(rows)
+        self.assertEqual(s["cycles"], 2)
+        self.assertEqual(s["by_kind"]["game"]["gross_positive"], 1)
+        self.assertEqual(s["by_kind"]["game"]["net_positive"], 0)
+        self.assertEqual(s["by_kind"]["game"]["maker_ge_2c"], 1)
+        self.assertEqual(s["by_kind"]["btc15"]["net_positive"], 1)
+        self.assertAlmostEqual(s["by_kind"]["btc15"]["net_total_if_each_episode_taken_once"], 3.0)
