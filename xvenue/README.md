@@ -31,3 +31,12 @@ Run `python -m xvenue breakeven`. The mispricing a hedge needs to clear fees (ho
 * Above a few hundred dollars, depth is the limit: the scan sizes each opportunity to the order books, so large bankrolls fill only what is quoted.
 * Posting the Polymarket leg as a resting order pays no Polymarket fee and roughly halves the hurdle (about 1.75 cents at mid prices), but the other leg can move before you complete the hedge, so it is no longer risk-free.
 A larger bankroll earns more *per opportunity* only up to the depth available, and compounds faster if opportunities are frequent. It does not make a thin opportunity profitable.
+
+## The wide scan: every open event on both venues
+```
+python -m xvenue universe --minutes 0                       # one pass (about 1-2 minutes: 15,000+ Kalshi events, 500+ Polymarket events)
+python -m xvenue universe --minutes 180 --pass-every 300    # keep watching; each new finding is printed and appended to data/xvenue/universe.jsonl
+```
+Same-venue bundles only, so no price-source mismatch: Kalshi complement, all-No in a mutually exclusive event, strike ladders; Polymarket crossed books, all-Yes and all-No in negative-risk events. It uses Kalshi's per-series fee multiplier (some series are half-fee and a few are fee-free), Polymarket's per-market fee schedule, and prints each finding's profit at several bankrolls. Polymarket findings are re-priced from the real order books before they are believed. A Polymarket "buy every outcome" bundle is shown but marked conditional: it pays nothing if the winner is not among the listed outcomes.
+
+Two false alarms built the safeguards, and both are regression tests: Kalshi tags "exactly 8 launches" and "exactly 3 launches" brackets as strike markets (they are exclusive, not nested), and a spread event lists both teams' lines (different quantities). Ladders are now accepted only if the resolution text says above/below and is identical apart from the number.

@@ -1,4 +1,6 @@
 """Usage:
+    python -m xvenue universe --minutes 0   # one pass over every open Kalshi and Polymarket event for same-venue arbitrage
+    python -m xvenue universe --minutes 180 --pass-every 300    # keep watching for three hours
     python -m xvenue breakeven              # how much mispricing each bankroll needs to beat the fees (no network)
     python -m xvenue scan --minutes 30      # watch the current hour on both venues; log every snapshot to data/xvenue/scan.jsonl
 
@@ -38,11 +40,64 @@ def snapshot(poly, strikes, strike: float, margin: float) -> tuple[list[Hedge], 
     return out, (up[0][0] + down[0][0]) if up and down else float("nan")
 
 
+ULOG = Path("data/xvenue/universe.jsonl")
+
+
+def universe(args, bankrolls: list[float]) -> int:
+    """Scan every open event on Kalshi and Polymarket for same-venue arbitrage; with --minutes, keep doing it."""
+    from .universe import fetch_kalshi_events, fetch_kalshi_fee_multipliers, fetch_poly_events, kalshi_findings, poly_findings, verify_poly
+
+    ULOG.parent.mkdir(parents=True, exist_ok=True)
+    end = time.time() + args.minutes * 60
+    seen: dict[tuple, dict] = {}
+    passes = 0
+    while True:
+        t0 = time.time()
+        try:
+            mult = fetch_kalshi_fee_multipliers()
+            kev, pev = fetch_kalshi_events(), fetch_poly_events()
+        except Exception as e:
+            print(f"  (pass skipped: {type(e).__name__}: {e})")
+            time.sleep(30)
+            if time.time() > end:
+                return 0
+            continue
+        passes += 1
+        findings = [f for e in kev for f in kalshi_findings(e, mult.get(e.get("series_ticker"), 1.0))]
+        pby = {e.get("slug"): e for e in pev}
+        verified = [v for f in (g for e in pev for g in poly_findings(e)) if (v := verify_poly(f, pby[f.event]))]
+        kinds: dict[str, int] = {}
+        for f in findings:
+            kinds[f"kalshi {f.kind}"] = kinds.get(f"kalshi {f.kind}", 0) + 1
+        live = [f for f in findings + verified if f.best()[1] > 0]
+        robust = [f for f in live if not f.risk]
+        nm = sum(len(e.get("markets") or []) for e in kev) + sum(len(e.get("markets") or []) for e in pev)
+        print(f"[{time.strftime('%H:%M:%S')}] pass {passes}: {len(kev)} Kalshi + {len(pev)} Polymarket events, {nm:,} markets, {time.time() - t0:.0f}s; "
+              f"candidates {sum(kinds.values())} (before fees), polymarket after order-book check {len(verified)}; profitable after fees {len(live)} ({len(robust)} without a caveat)")
+        for f in sorted(live, key=lambda f: -f.best()[1])[:15]:
+            key = (f.venue, f.kind, f.event)
+            u, pr = f.best()
+            first = key not in seen
+            seen[key] = {**seen.get(key, {"first": time.time()}), "last": time.time(), "max": max(pr, seen.get(key, {}).get("max", 0))}
+            if first:
+                sizing = "  ".join(f"${b:,.0f}: {f.best(b)[1]:+.2f}" for b in bankrolls)
+                print(f"   NEW {f.venue} {f.kind}: {f.title[:60]} [{f.event}]  {len(f.legs)} legs, cost {f.unit_cost:.3f} for payout {f.payout:g}, best {pr:+.2f} USD at {u:.0f} units\n       by bankroll  {sizing}  {f.note}" + (f"\n       RISK: {f.risk}" if f.risk else ""))
+                with ULOG.open("a") as log:
+                    log.write(json.dumps({"t": time.time(), "venue": f.venue, "kind": f.kind, "event": f.event, "title": f.title, "legs": [l.__dict__ for l in f.legs],
+                                          "payout": f.payout, "units": u, "profit": pr, "note": f.note}) + "\n")
+        if time.time() + args.pass_every > end:
+            break
+        time.sleep(args.pass_every)
+    print(f"\n{passes} passes; {len(seen)} distinct profitable findings" + ("".join(f"\n  {k[0]} {k[1]} {k[2]}: max {v['max']:+.2f} USD, seen for {(v['last'] - v['first']) / 60:.0f} min" for k, v in seen.items())))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="xvenue", description="Polymarket vs Kalshi hourly BTC hedge scanner (read-only)")
-    p.add_argument("cmd", choices=("scan", "breakeven"))
+    p.add_argument("cmd", choices=("scan", "breakeven", "universe"))
     p.add_argument("--minutes", type=float, default=30)
     p.add_argument("--every", type=float, default=5.0, help="seconds between snapshots")
+    p.add_argument("--pass-every", type=float, default=300.0, help="universe: seconds between passes when watching")
     p.add_argument("--bankrolls", default="25,100,500,2500,10000", help="dollars per hedge to size opportunities for (comma separated)")
     p.add_argument("--margin", type=float, default=60.0, help="skip Kalshi strikes closer than this many dollars to Polymarket's strike in Kalshi terms (default 60: the Binance-vs-Coinbase basis has sd $14)")
     args = p.parse_args(argv)
@@ -55,6 +110,8 @@ def main(argv: list[str] | None = None) -> int:
         print("\nWith the Polymarket leg posted as a maker order (no Polymarket fee, but the other leg can move first):\n")
         print(fee_table(poly_maker=True))
         return 0
+    if args.cmd == "universe":
+        return universe(args, bankrolls)
     LOG.parent.mkdir(parents=True, exist_ok=True)
     end = time.time() + args.minutes * 60
     n = naive = allin = ladder_hits = set_hits = 0

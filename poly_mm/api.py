@@ -18,7 +18,7 @@ class ApiError(Exception):
     pass
 
 
-def get_json(url: str, params: dict | None = None, retries: int = 4, timeout: float = 30.0):
+def get_json(url: str, params: dict | None = None, retries: int = 6, timeout: float = 30.0):
     if params:
         url = f"{url}?{urllib.parse.urlencode(params)}"
     last: Exception | None = None
@@ -27,9 +27,16 @@ def get_json(url: str, params: dict | None = None, retries: int = 4, timeout: fl
             with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=timeout) as resp:
                 return json.load(resp)
         except urllib.error.HTTPError as e:
-            if e.code in (400, 404):  # the request itself is wrong or there is nothing there: retrying will not help
+            if e.code in (400, 404, 422):  # the request itself is wrong or there is nothing there: retrying will not help
                 raise ApiError(f"{e.code} for {url}")
             last = e
+            if e.code == 429:  # rate limited: wait as long as the server asks, else back off hard
+                try:
+                    wait = float(e.headers.get("Retry-After", ""))
+                except ValueError:
+                    wait = 5.0 * 2 ** attempt
+                time.sleep(min(wait, 60.0))
+                continue
         except (urllib.error.URLError, OSError, ValueError) as e:
             last = e
         time.sleep(0.5 * 2 ** attempt)
