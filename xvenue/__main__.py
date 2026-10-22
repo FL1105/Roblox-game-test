@@ -117,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     n = naive = allin = ladder_hits = set_hits = 0
     best_all: Hedge | None = None
     hour, poly, strikes, eff = None, None, [], None
+    waiting = None
     print(f"{'time ET':8s} {'strike*':>11s} {'nearest':>8s} {'gap$':>6s} {'sides':9s} {'naive sum':>9s} {'all-in/share':>12s} {'profit/share':>12s} {'shares':>7s}")
     with LOG.open("a") as log:
         while time.time() < end:
@@ -132,7 +133,11 @@ def main(argv: list[str] | None = None) -> int:
                         if eff is not None and strikes:
                             print(f"-- hour {h:%a %H:%M} ET: strike in Kalshi terms {eff:,.2f} (Coinbase open); kalshi {kalshi_event(next_hour(h))}: {len(strikes)} strikes")
                 if not poly or not strikes or eff is None:
-                    time.sleep(args.every)
+                    if waiting != hour:  # say why once per hour instead of staying silent
+                        waiting = hour
+                        why = "Polymarket has no market yet" if not poly else f"Kalshi lists no {kalshi_event(next_hour(hour))} event (it does not run an hourly BTC market for every hour)" if not strikes else "no Coinbase price yet"
+                        print(f"-- hour {hour:%a %H:%M} ET: waiting, {why}")
+                    time.sleep(max(args.every, 60.0))
                     continue
                 hedges, poly_pair = snapshot(poly, strikes, eff, args.margin)
             except Exception as e:  # network hiccups should not stop a long scan

@@ -40,3 +40,6 @@ python -m xvenue universe --minutes 180 --pass-every 300    # keep watching; eac
 Same-venue bundles only, so no price-source mismatch: Kalshi complement, all-No in a mutually exclusive event, strike ladders; Polymarket crossed books, all-Yes and all-No in negative-risk events. It uses Kalshi's per-series fee multiplier (some series are half-fee and a few are fee-free), Polymarket's per-market fee schedule, and prints each finding's profit at several bankrolls. Polymarket findings are re-priced from the real order books before they are believed. A Polymarket "buy every outcome" bundle is shown but marked conditional: it pays nothing if the winner is not among the listed outcomes.
 
 Two false alarms built the safeguards, and both are regression tests: Kalshi tags "exactly 8 launches" and "exactly 3 launches" brackets as strike markets (they are exclusive, not nested), and a spread event lists both teams' lines (different quantities). Ladders are now accepted only if the resolution text says above/below and is identical apart from the number.
+
+## Availability
+Kalshi does not run an hourly BTC market for every hour. Overnight (US Eastern) only the daily 5 PM EDT events are open, and the cross-venue scan then reports "waiting" and checks once a minute until an hourly event appears. The universe scan has no such limit.
