@@ -89,3 +89,30 @@ delays on Polymarket / Limitless, cancel-on-fill behaviour, different conditions
 Only a live test with small orders (which needs a Kalshi API key and a funded Polymarket wallet) can settle that.
 
 **Status:** a documented, repeatable lead with no counter-evidence so far, on a sample of 10 settled live windows. Not a proven edge.
+
+## 5. Paper bot, live books, US evening (2026-10-22, 21:23Z-23:30Z = 5:23-7:30 pm New York)
+
+`python -m pmarb bot` watched the live Kalshi and Polymarket books, signalled on a hedge that is profitable after fees, waited one
+poll (about 6 s) and executed only if the gap was still there at the new prices, at 50% of the displayed size, under hard limits
+(100 sets per trade, $300 per window, $1,000 open, $300 daily loss stop, at least 2c net per set, none in the last 45 s, venue
+answers within 1.5 s of each other). It placed no orders. Positions were held to the real settlement.
+
+| window (Z) | trades | deployed | realised | return on deployed |
+|---|---|---|---|---|
+| 21:45 | 4 | $299 | $22.35 | 7.5% |
+| 22:00 | 4 | $300 | $14.98 | 5.0% |
+| 22:15 | 6 | $299 | $26.55 | 8.9% |
+| 22:30 | 3 | $275 | $16.28 | 5.9% |
+| 22:45 | 4 | $300 | $16.14 | 5.4% |
+| 23:00 | 4 | $299 | $19.34 | 6.5% |
+| 23:15 | 5 | $299 | $13.80 | 4.6% |
+| **total** | **30** | **$2,071** | **$129.44** | **6.2%** |
+
+All 30 paid $1 (payoffs 0/1/2 = 0/30/0); the venues agreed in all 7 windows. Median trade: 100 sets, $3.65 net. Orientation was mixed (17 YES Kalshi /
+NO Polymarket, 13 the reverse), so a disagreement would have partly offset across trades in the same window.
+
+What this does and does not show. Across every live window I have watched with outcomes (about 21), the three venues disagreed once.
+This run was positive in 7 of 7 windows, covers some US-evening hours (not market hours), and the gap was absent for the first
+10 minutes, so it is state-dependent: it appears when BTC is moving and Kalshi lags. It is still **simulated**: the fills, the
+delay and the half-size haircut are assumptions, and there was no disagreement window to test the tail. The per-window figure is
+capped by the $300 limit and is not a forecast.
