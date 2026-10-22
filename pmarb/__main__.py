@@ -6,7 +6,7 @@ import argparse
 import sys
 import time
 
-from . import band, bankroll, btc3, match, scan, sizing, summary, venues, watch
+from . import band, bankroll, bot, btc3, match, scan, sizing, summary, venues, watch
 
 
 def say(msg: str) -> None:
@@ -65,6 +65,15 @@ def band_cmd(args) -> int:
     return 0
 
 
+def bot_cmd(args) -> int:
+    if args.live:
+        print("Live execution is not implemented: it needs your own exchange keys and cannot be tested without them. Running as a paper bot.", file=sys.stderr)
+    limits = bot.Limits(max_sets=args.max_sets, max_window_cost=args.max_window_cost, max_open_cost=args.max_open_cost, daily_loss_stop=-abs(args.loss_stop))
+    paper = bot.PaperBot(limits, args.ledger)
+    bot.run(args.minutes, args.interval, paper, say)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m pmarb", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -84,8 +93,17 @@ def main(argv=None) -> int:
     bd = sub.add_parser("band", help="score the pre-registered 'sell the band' hedge on historical BTC 15-minute windows")
     bd.add_argument("--windows", required=True, help="json list of [close_ts, kalshi_up, poly_up]")
     bd.add_argument("--history", required=True, help="cache of Polymarket price histories (json)")
+    bo = sub.add_parser("bot", help="PAPER-trade the Kalshi/Polymarket BTC 15-minute hedge against live books (places no orders)")
+    bo.add_argument("--minutes", type=float, default=110)
+    bo.add_argument("--interval", type=float, default=6)
+    bo.add_argument("--ledger", default="pmarb_bot_ledger.jsonl")
+    bo.add_argument("--max-sets", type=int, default=100)
+    bo.add_argument("--max-window-cost", type=float, default=300.0)
+    bo.add_argument("--max-open-cost", type=float, default=1000.0)
+    bo.add_argument("--loss-stop", type=float, default=300.0)
+    bo.add_argument("--live", action="store_true", help="not implemented; accepted only to say so")
     args = ap.parse_args(argv)
-    return {"band": band_cmd, "scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd, "btc3": btc3_cmd}[args.cmd](args)
+    return {"bot": bot_cmd, "band": band_cmd, "scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd, "btc3": btc3_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":

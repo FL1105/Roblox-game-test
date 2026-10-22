@@ -389,3 +389,60 @@ class Replay(unittest.TestCase):
         self.assertEqual((band["payoffs"][0], band["realised"]), (1, 10.0 - 100))
         lucky = realised([t], {1000: {"kalshi": True, "poly": False}})
         self.assertEqual((lucky["payoffs"][2], lucky["realised"]), (1, 10.0 + 100))
+
+
+class PaperBotTests(unittest.TestCase):
+    def row(self, t, k_ask, p_bid, close=1000, left=300, size=400, skew=0.3):
+        q = lambda bid, ask: {"bid": bid, "bid_size": size, "ask": ask, "ask_size": size, "min": 1}
+        return {"t": t, "close": close, "left_s": left, "skew_s": skew,
+                "quotes": {"kalshi": q(k_ask - 0.01, k_ask), "poly": q(p_bid, p_bid + 0.01), "limitless": q(0.4, 0.5)}}
+
+    def bot(self, **kw):
+        from pmarb.bot import Limits, PaperBot
+        return PaperBot(Limits(**kw))
+
+    def test_signal_then_delayed_half_size_execution(self):
+        b = self.bot()
+        self.assertIsNone(b.on_row(self.row(0, 0.50, 0.49)))                 # no gap in either direction
+        self.assertIsNone(b.pending)
+        self.assertIsNone(b.on_row(self.row(6, 0.40, 0.60)))                 # gap appears: signal only
+        t = b.on_row(self.row(12, 0.40, 0.60))                               # next poll: execute
+        self.assertEqual((t["yes_on"], t["no_on"]), ("kalshi", "poly"))
+        self.assertEqual(t["sets"], 100)                                     # half of 400 = 200, capped at max_sets
+        self.assertAlmostEqual(t["cost"], 100 * (0.40 + 0.40))
+        self.assertIsNone(b.on_row(self.row(18, 0.40, 0.60)))                # same run: no second trade
+
+    def test_a_gap_that_closes_before_execution_is_skipped(self):
+        b = self.bot()
+        b.on_row(self.row(6, 0.40, 0.60))
+        self.assertIsNone(b.on_row(self.row(12, 0.60, 0.50)))
+        self.assertEqual(b.trades, {})
+
+    def test_hard_limits(self):
+        b = self.bot(max_window_cost=50.0)
+        b.on_row(self.row(6, 0.40, 0.60)); t = b.on_row(self.row(12, 0.40, 0.60))
+        self.assertLessEqual(t["cost"], 50.0)                                # budget caps the size
+        tiny = self.bot(max_window_cost=3.0)                                 # room for under 5 sets: no trade
+        tiny.on_row(self.row(6, 0.40, 0.60))
+        self.assertIsNone(tiny.on_row(self.row(12, 0.40, 0.60)))
+
+    def test_bad_conditions_block_trading(self):
+        for kw in ({"skew": 3.0}, {"left": 20}, {"left": 900}):
+            b = self.bot(); b.on_row(self.row(6, 0.40, 0.60, **kw))
+            self.assertIsNone(b.pending, kw)
+        b = self.bot(); b.on_row(self.row(6, 0.02, 0.10))                    # prices outside 5-95c
+        self.assertIsNone(b.pending)
+
+    def test_loss_stop_halts_new_trades(self):
+        b = self.bot(daily_loss_stop=-10.0); b.realised = -50.0
+        b.on_row(self.row(6, 0.40, 0.60))
+        self.assertIsNone(b.pending)
+
+    def test_settlement_pays_zero_one_or_two(self):
+        b = self.bot(); b.on_row(self.row(6, 0.40, 0.60)); t = b.on_row(self.row(12, 0.40, 0.60))
+        agree = b.settle(1000, {"kalshi": True, "poly": True})
+        self.assertAlmostEqual(agree, t["net_if_agree"])
+        b2 = self.bot(); b2.on_row(self.row(6, 0.40, 0.60)); t2 = b2.on_row(self.row(12, 0.40, 0.60))
+        band = b2.settle(1000, {"kalshi": False, "poly": True})              # YES Kalshi loses, NO Polymarket loses
+        self.assertAlmostEqual(band, t2["net_if_agree"] - t2["sets"])
+        self.assertEqual(b2.open_cost(), 0.0)
