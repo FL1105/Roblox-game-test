@@ -290,3 +290,68 @@ class SizedHedge(unittest.TestCase):
         free = hedge_total("kalshi", a, "kalshi", b, NOFEE, NOFEE)["net"]
         lim = hedge_total("limitless", a, "kalshi", b, None, NOFEE)["net"]
         self.assertLess(lim, free)
+
+
+class Band(unittest.TestCase):
+    def test_both_orientations_are_priced_with_fees(self):
+        from pmarb.band import options
+        a, b = options(0.40, 0.42, 0.55, 0.005)       # Kalshi 40/42, Polymarket 54.5/55.5
+        self.assertEqual((a.yes_on, a.no_on, b.yes_on, b.no_on), ("kalshi", "poly", "poly", "kalshi"))
+        # YES on Kalshi at .42 + NO on Polymarket at 1 - .545 = .455
+        self.assertAlmostEqual(a.net, 1 - 0.42 - 0.455 - 0.07 * 0.42 * 0.58 - 0.07 * 0.455 * 0.545)
+        self.assertLess(b.net, a.net)                 # the other direction pays Polymarket's ask for Kalshi's bid: a loser
+
+    def test_payoff_is_zero_in_the_band_and_two_the_other_way(self):
+        from pmarb.band import Option, payoff
+        o = Option("kalshi", "poly", 0.1)             # YES Kalshi, NO Polymarket
+        self.assertEqual(payoff(o, kalshi_up=True, poly_up=True), 1)
+        self.assertEqual(payoff(o, kalshi_up=False, poly_up=False), 1)
+        self.assertEqual(payoff(o, kalshi_up=True, poly_up=False), 2)      # the venues disagree in this hedge's favour
+        self.assertEqual(payoff(o, kalshi_up=False, poly_up=True), 0)      # ... and against it
+
+    def test_stale_polymarket_prices_are_not_used(self):
+        from pmarb.band import poly_price_at
+        h = [{"t": 100, "p": 0.4}, {"t": 180, "p": 0.5}]
+        self.assertEqual(poly_price_at(h, 200), 0.5)
+        self.assertIsNone(poly_price_at(h, 400))      # last point is older than 150 s
+        self.assertIsNone(poly_price_at([], 200))
+
+    def test_realised_equals_modeled_net_plus_payoff_minus_one(self):
+        from pmarb.band import Option, score
+        rows = [{"opt": Option("kalshi", "poly", 0.05), "payoff": 1}, {"opt": Option("kalshi", "poly", 0.05), "payoff": 0},
+                {"opt": Option("kalshi", "poly", 0.01), "payoff": 1}]
+        s = score(rows, 0.02)
+        self.assertEqual(s["n"], 2)
+        self.assertAlmostEqual(s["mean"], (0.05 + (0.05 - 1)) / 2)
+        self.assertEqual(s["payoffs"], {0: 1, 1: 1, 2: 0})
+        self.assertEqual(score(rows, 0.5), {"n": 0})
+
+
+class LeadLag(unittest.TestCase):
+    def row(self, t, k, p, net=None, close=1000):
+        q = lambda x: {"bid": x - 0.005, "ask": x + 0.005, "bid_size": 100, "ask_size": 100}
+        return {"t": t, "close": close, "quotes": {"kalshi": q(k), "poly": q(p)}, "best": None if net is None else {"net": net}}
+
+    def test_a_follower_is_closest_to_the_leader_a_few_polls_earlier(self):
+        from pmarb.leadlag import lagged_gap
+        lead = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.7, 0.6, 0.5, 0.4]
+        rows = [self.row(6 * i, lead[max(i - 2, 0)], lead[i]) for i in range(len(lead))]     # Kalshi repeats Polymarket two polls late
+        gaps = [lagged_gap(rows, "kalshi", "poly", k)[0] for k in range(0, 5)]
+        self.assertEqual(gaps.index(min(gaps)), 2)
+        self.assertLess(min(gaps), 1e-9)
+        reverse = [lagged_gap(rows, "poly", "kalshi", k)[0] for k in range(0, 5)]
+        self.assertEqual(reverse.index(min(reverse)), 0)
+
+    def test_lags_never_cross_a_window_boundary(self):
+        from pmarb.leadlag import lagged_gap
+        rows = [self.row(0, 0.3, 0.3, close=1000), self.row(6, 0.9, 0.9, close=1900)]
+        self.assertEqual(lagged_gap(rows, "kalshi", "poly", 1)[1], 0)
+
+    def test_runs_and_first_sight_entries(self):
+        from pmarb.leadlag import first_sight_entries, profitable_runs
+        nets = [None, 1.0, 2.0, -1.0, 3.0, 4.0, 5.0, None]
+        rows = [self.row(6 * i, 0.5, 0.5, n) for i, n in enumerate(nets)]
+        self.assertEqual(profitable_runs(rows), [2, 3])
+        self.assertEqual([r["t"] for r in first_sight_entries(rows)], [6, 24])
+        far = [self.row(0, 0.5, 0.5, 1.0), self.row(60, 0.5, 0.5, 1.0)]       # a minute apart: two runs, not one
+        self.assertEqual(profitable_runs(far), [1, 1])

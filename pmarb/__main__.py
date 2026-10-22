@@ -6,7 +6,7 @@ import argparse
 import sys
 import time
 
-from . import bankroll, btc3, match, scan, sizing, summary, venues, watch
+from . import band, bankroll, btc3, match, scan, sizing, summary, venues, watch
 
 
 def say(msg: str) -> None:
@@ -60,6 +60,11 @@ def btc3_cmd(args) -> int:
     return 0
 
 
+def band_cmd(args) -> int:
+    print(band.run(args.windows, args.history, say))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m pmarb", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -76,8 +81,11 @@ def main(argv=None) -> int:
     b3.add_argument("--minutes", type=float, default=45)
     b3.add_argument("--interval", type=float, default=15)
     b3.add_argument("--log", default="pmarb_btc3.jsonl")
+    bd = sub.add_parser("band", help="score the pre-registered 'sell the band' hedge on historical BTC 15-minute windows")
+    bd.add_argument("--windows", required=True, help="json list of [close_ts, kalshi_up, poly_up]")
+    bd.add_argument("--history", required=True, help="cache of Polymarket price histories (json)")
     args = ap.parse_args(argv)
-    return {"scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd, "btc3": btc3_cmd}[args.cmd](args)
+    return {"band": band_cmd, "scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd, "btc3": btc3_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":

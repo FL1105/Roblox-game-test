@@ -5,6 +5,9 @@ Read-only research tooling. Public endpoints only: **no API keys, no wallets, no
 ```
 python -m pmarb scan                       # one pass over every open market on both venues, all detectors, fees included
 python -m pmarb watch --minutes 40         # poll exactly-matched games and live BTC 15-minute windows every 20 s, log every gap
+python -m pmarb btc3 --minutes 45          # the same BTC 15-minute window on Kalshi, Polymarket and Limitless, fetched concurrently, with sizes
+python -m pmarb band --windows W --history H   # score the pre-registered 'sell the band' hedge (see PREREGISTERED_band.txt)
+python -m pmarb bankroll --log <watch log> # fee rounding by order size; what a bankroll could capture
 python -m unittest tests.test_pmarb        # offline tests, hand-checked arithmetic
 ```
 
