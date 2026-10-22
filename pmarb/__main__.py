@@ -6,7 +6,7 @@ import argparse
 import sys
 import time
 
-from . import bankroll, match, scan, sizing, summary, venues, watch
+from . import bankroll, btc3, match, scan, sizing, summary, venues, watch
 
 
 def say(msg: str) -> None:
@@ -55,6 +55,11 @@ def bankroll_cmd(args) -> int:
     return 0
 
 
+def btc3_cmd(args) -> int:
+    btc3.watch(args.minutes, args.interval, args.log, say)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m pmarb", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -67,8 +72,12 @@ def main(argv=None) -> int:
     bk = sub.add_parser("bankroll", help="fee rounding by order size, and what a bankroll could have captured from a watch log")
     bk.add_argument("--log", help="a watch log (jsonl)")
     bk.add_argument("--bankrolls", type=lambda t: [float(x) for x in t.split(",")], default=[50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000])
+    b3 = sub.add_parser("btc3", help="the same BTC 15-minute window on Kalshi, Polymarket and Limitless")
+    b3.add_argument("--minutes", type=float, default=45)
+    b3.add_argument("--interval", type=float, default=15)
+    b3.add_argument("--log", default="pmarb_btc3.jsonl")
     args = ap.parse_args(argv)
-    return {"scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd}[args.cmd](args)
+    return {"scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd, "btc3": btc3_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":

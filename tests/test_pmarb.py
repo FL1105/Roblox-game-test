@@ -245,3 +245,20 @@ class Bankroll(unittest.TestCase):
         from pmarb.bankroll import simulate
         rows = [self.logged(t, "g [A]", 0.44, 0.45, 0.50, 0.51, 100) for t in (1, 21, 41)]
         self.assertEqual(len(simulate(rows, 100_000)), 1)
+
+
+class Limitless(unittest.TestCase):
+    def test_buy_fee_curve_interpolates_the_published_table(self):
+        from pmarb.btc3 import limitless_buy_rate
+        self.assertAlmostEqual(limitless_buy_rate(0.30), 0.03)       # flat 3.00% up to 50c
+        self.assertAlmostEqual(limitless_buy_rate(0.60), 0.0213)     # table: $0.60 -> 2.13%
+        self.assertAlmostEqual(limitless_buy_rate(0.90), 0.0068)
+        self.assertAlmostEqual(limitless_buy_rate(0.625), (2.13 + 1.80) / 2 / 100)   # midway between 60c and 65c
+        self.assertLess(limitless_buy_rate(0.95), limitless_buy_rate(0.60))
+
+    def test_the_fee_is_taken_in_tokens_so_cost_per_token_rises(self):
+        from pmarb.btc3 import buy_cost
+        self.assertAlmostEqual(buy_cost("limitless", 0.40), 0.40 / 0.97)
+        self.assertGreater(buy_cost("limitless", 0.40), 0.40)
+        self.assertAlmostEqual(buy_cost("kalshi", 0.50, Fee(0.07, 1.0, cent_round=False)), 0.50 + 0.07 * 0.25)
+        self.assertAlmostEqual(buy_cost("poly", 0.50, NOFEE), 0.50)
