@@ -116,21 +116,22 @@ def main(argv: list[str] | None = None) -> int:
     end = time.time() + args.minutes * 60
     n = naive = allin = ladder_hits = set_hits = 0
     best_all: Hedge | None = None
-    hour, poly, strikes = None, None, []
+    hour, poly, strikes, eff = None, None, [], None
     print(f"{'time ET':8s} {'strike*':>11s} {'nearest':>8s} {'gap$':>6s} {'sides':9s} {'naive sum':>9s} {'all-in/share':>12s} {'profit/share':>12s} {'shares':>7s}")
     with LOG.open("a") as log:
         while time.time() < end:
             try:
                 h = hour_start()
-                if h != hour or not poly:
+                if h != hour or not poly or not strikes or eff is None:  # at an hour change either venue can be a little late: keep asking
                     hour, poly = h, load_poly_hour(h)
                     strikes = load_kalshi_strikes(next_hour(h)) if poly else []
                     if poly:
                         # Polymarket's strike is a Binance BTC/USDT price, about $97 above the USD price Kalshi's index follows: use the USD open
                         t0 = int(h.timestamp())
                         eff = fetch_range(t0 - 60, t0 + 120).get(t0)
-                        print(f"-- hour {h:%a %H:%M} ET: strike in Kalshi terms {eff:,.2f} (Coinbase open); kalshi {kalshi_event(next_hour(h))}: {len(strikes)} strikes")
-                if not poly or not strikes:
+                        if eff is not None and strikes:
+                            print(f"-- hour {h:%a %H:%M} ET: strike in Kalshi terms {eff:,.2f} (Coinbase open); kalshi {kalshi_event(next_hour(h))}: {len(strikes)} strikes")
+                if not poly or not strikes or eff is None:
                     time.sleep(args.every)
                     continue
                 hedges, poly_pair = snapshot(poly, strikes, eff, args.margin)
