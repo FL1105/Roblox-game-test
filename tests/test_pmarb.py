@@ -262,3 +262,31 @@ class Limitless(unittest.TestCase):
         self.assertGreater(buy_cost("limitless", 0.40), 0.40)
         self.assertAlmostEqual(buy_cost("kalshi", 0.50, Fee(0.07, 1.0, cent_round=False)), 0.50 + 0.07 * 0.25)
         self.assertAlmostEqual(buy_cost("poly", 0.50, NOFEE), 0.50)
+
+
+class SizedHedge(unittest.TestCase):
+    def test_sets_are_the_thinner_side_and_fees_hit_both_legs(self):
+        from pmarb.btc3 import hedge_total
+        k = {"bid": 0.41, "bid_size": 9000, "ask": 0.42, "ask_size": 4400, "min": 1}
+        p = {"bid": 0.53, "bid_size": 125.4, "ask": 0.54, "ask_size": 2000, "min": 5}
+        kf, pf = Fee(0.07, 1.0, cent_round=True), Fee(0.07)
+        h = hedge_total("kalshi", k, "poly", p, kf, pf)          # YES on Kalshi at .42, NO on Polymarket at 1 - .53 = .47
+        self.assertEqual((h["sets"], h["yes_on"], h["no_on"]), (125, "kalshi", "poly"))
+        cost = 125 * 0.42 + 125 * 0.47 + kf.total(0.42, 125) + pf.total(0.47, 125)
+        self.assertAlmostEqual(h["net"], 125 - cost)
+        self.assertAlmostEqual(h["gross"], 125 * (1 - 0.42 - 0.47))
+
+    def test_minimum_orders_and_missing_sides_block_the_trade(self):
+        from pmarb.btc3 import hedge_total
+        thin = {"bid": 0.50, "bid_size": 8.0, "ask": 0.55, "ask_size": 48.0, "min": 50}        # Limitless-style: 50-share minimum
+        deep = {"bid": 0.40, "bid_size": 900, "ask": 0.45, "ask_size": 900, "min": 1}
+        self.assertIsNone(hedge_total("kalshi", deep, "limitless", thin, KALSHI, None))        # only 8 shares to hit: under the minimum
+        self.assertIsNone(hedge_total("kalshi", {**deep, "ask": None}, "poly", deep, KALSHI, NOFEE))
+
+    def test_limitless_buys_cost_more_than_the_quoted_price(self):
+        from pmarb.btc3 import hedge_total
+        a = {"bid": 0.40, "bid_size": 900, "ask": 0.40, "ask_size": 900, "min": 1}
+        b = {"bid": 0.60, "bid_size": 900, "ask": 0.62, "ask_size": 900, "min": 1}
+        free = hedge_total("kalshi", a, "kalshi", b, NOFEE, NOFEE)["net"]
+        lim = hedge_total("limitless", a, "kalshi", b, None, NOFEE)["net"]
+        self.assertLess(lim, free)

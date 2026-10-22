@@ -1,0 +1,31 @@
+PRE-REGISTRATION: "selling the band" between Kalshi's and Polymarket's BTC 15-minute start references
+Written 2026-10-22, before any historical hedge was scored against outcomes.
+
+IDEA
+Kalshi (60 s BRTI average) and Polymarket (Chainlink TWAP) measure "up" from slightly different start levels. A hedge
+that buys YES on one venue and NO on the other pays $0 only when the price ends BETWEEN the two references, $2 when it ends
+between them the other way round, and $1 otherwise. If the venues' quoted price difference overstates how often the price
+really lands in that band, the hedge has positive expected value. The live gaps (mean 5c, up to 27c) look large next to the
+1.33% historical rate at which the two venues' final outcomes disagree.
+
+DATA (fixed before scoring)
+The 1,200 randomly drawn windows already collected (Aug 29 - Oct 20, 2026) with both venues' recorded outcomes. Kalshi bid/ask
+from the cached 1-minute candle ending 300 s before close. Polymarket Up price = the last price-history point at or before
+close - 300 s and no older than 150 s; the book is not available historically, so bid/ask = that price -/+ a half-spread of
+0.5c (primary) and 1.0c (sensitivity). Windows with a missing quote on either venue, or a mid outside 3-97c, are skipped and counted.
+
+RULE (no tuning)
+At close - 300 s, for each orientation (YES on Kalshi + NO on Polymarket, or YES on Polymarket + NO on Kalshi) compute
+net per set = 1 - cost - fees, taker on both legs (Kalshi 0.07 p(1-p), Polymarket crypto 0.07 p(1-p)). Take the better
+orientation if its net is at least 2c; otherwise no trade. One set per window.
+Realised payoff = [YES leg's venue resolved Up] + [NO leg's venue resolved Down].
+
+TEST
+Primary: mean realised net per set over taken trades, one-sided p for mean > 0 (normal approximation), requiring at least
+100 taken trades. Reported with the 95% interval, the counts of payoffs 0 / 1 / 2, and the same at half-spread 1.0c.
+Also reported (no verdict): how the result varies with the modeled net threshold (0, 2, 5, 10c).
+Decision: an edge is claimed only if the primary mean is > 0 with p < 0.01 AND it is still > 0 at the 1.0c half-spread.
+
+LIMITATIONS
+Polymarket's historical price is a last/mid price, not a book, so spread and depth are assumed. Fills at size are untested.
+The 5-minute entry is one choice among many; it is fixed here and not searched.
