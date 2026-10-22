@@ -170,3 +170,78 @@ class WatchSummary(unittest.TestCase):
         self.assertEqual(s["by_kind"]["game"]["maker_ge_2c"], 1)
         self.assertEqual(s["by_kind"]["btc15"]["net_positive"], 1)
         self.assertAlmostEqual(s["by_kind"]["btc15"]["net_total_if_each_episode_taken_once"], 3.0)
+
+
+class Sizing(unittest.TestCase):
+    def test_kalshi_rounding_punishes_tiny_orders_at_extreme_prices(self):
+        from pmarb.sizing import fee_per_contract, overhead
+        self.assertAlmostEqual(fee_per_contract(0.97, 1), 0.01)             # the 1c minimum
+        self.assertAlmostEqual(fee_per_contract(0.97, 100), 0.0021)          # ceil(20.37c) = 21c over 100
+        self.assertGreater(overhead(0.97, 1), 3.5)
+        self.assertLess(overhead(0.97, 1000), 0.01)
+        self.assertAlmostEqual(fee_per_contract(0.5, 100), 0.0175)
+
+    def test_walking_a_book_costs_the_marginal_levels(self):
+        from pmarb.sizing import cost_to_buy, hedge_net
+        self.assertAlmostEqual(cost_to_buy([(0.4, 10), (0.5, 10)], 15), 4.0 + 2.5)
+        self.assertIsNone(cost_to_buy([(0.4, 10), (0.5, 10)], 25))
+        self.assertAlmostEqual(hedge_net([(0.4, 100)], [(0.5, 100)], NOFEE, NOFEE, 10), 1.0)
+        self.assertIsNone(hedge_net([(0.4, 100)], [(0.5, 100)], NOFEE, NOFEE, 200))
+        self.assertAlmostEqual(hedge_net([(0.4, 5), (0.45, 5)], [(0.5, 10)], NOFEE, NOFEE, 10), 10 - 4.25 - 5.0)
+
+    def test_hedge_net_charges_fees_on_the_average_fill(self):
+        from pmarb.sizing import hedge_net
+        fee = Fee(0.07)
+        net = hedge_net([(0.4, 100)], [(0.5, 100)], NOFEE, fee, 100)
+        self.assertAlmostEqual(net, 100 - 40 - 50 - 0.07 * 100 * 0.25)
+
+    def test_capital_is_split_between_venues(self):
+        from pmarb.sizing import capital_cap
+        self.assertEqual(capital_cap({"k": 0.5, "p": 0.4}, 100), 100)       # min(50 / 0.5, 50 / 0.4)
+        self.assertEqual(capital_cap({"k": 0.9, "p": 0.1}, 100), 55)        # the Kalshi leg is the binding one
+
+    def test_repricing_an_opportunity_at_smaller_sizes(self):
+        from pmarb.sizing import net_at
+        legs = [Leg("kalshi", "k", "k", "yes", 0.4, 100, KALSHI), Leg("poly", "p", "p", "no", 0.5, 100, NOFEE, 5)]
+        opp = build("t", "e", "t", legs, 1.0, True)
+        self.assertAlmostEqual(net_at(opp, 100), opp.net)
+        self.assertAlmostEqual(net_at(opp, 10), 10 * 0.1 - KALSHI.total(0.4, 10))
+        self.assertIsNone(net_at(opp, 4))          # under the Polymarket minimum order
+        self.assertIsNone(net_at(opp, 101))        # more than the book shows
+
+
+class Bankroll(unittest.TestCase):
+    def logged(self, t, label, k_bid, k_ask, p_bid, p_ask, qty, kalshi_mult=1.0):
+        # a profitable Kalshi-YES + Polymarket-NO observation, with the fees and net the watcher would have logged
+        gross, pk = p_bid - k_ask, k_ask
+        fees = KALSHI.total(pk, qty) * kalshi_mult
+        return {"t": t, "label": label, "kind": "game", "k_bid": k_bid, "k_ask": k_ask, "p_bid": p_bid, "p_ask": p_ask,
+                "gross": gross, "maker_edge": 0.0, "net": qty * gross - fees, "qty": qty, "fees": fees}
+
+    def test_direction_and_fee_multiplier_are_recovered_from_the_log(self):
+        from pmarb.bankroll import identify
+        r = self.logged(1, "g [A]", 0.44, 0.45, 0.50, 0.51, 200)
+        direction, mult = identify(r)
+        self.assertEqual(direction, 0)
+        self.assertAlmostEqual(mult, 1.0, delta=0.1)
+
+    def test_small_bankrolls_take_fewer_sets_and_big_ones_hit_the_depth_cap(self):
+        from pmarb.bankroll import simulate
+        rows = [self.logged(1, "g [A]", 0.44, 0.45, 0.50, 0.51, 500)]
+        small, mid, big = (simulate(rows, b) for b in (100, 300, 100_000))
+        self.assertEqual(len(small), 1)
+        self.assertLess(small[0][2], mid[0][2])
+        self.assertEqual(big[0][2], 500)             # capped by what the book showed
+        self.assertGreater(big[0][3], mid[0][3])
+
+    def test_capital_stays_locked_until_the_end(self):
+        from pmarb.bankroll import simulate
+        rows = [self.logged(1, "g [A]", 0.44, 0.45, 0.50, 0.51, 500), self.logged(21, "h [B]", 0.44, 0.45, 0.50, 0.51, 500)]
+        one = simulate(rows, 400)          # enough for roughly one game's hedge at this size
+        self.assertEqual(len(one), 1)      # the second opportunity finds the capital already spent
+        self.assertEqual(len(simulate(rows, 100_000)), 2)
+
+    def test_a_continuing_episode_is_one_trade(self):
+        from pmarb.bankroll import simulate
+        rows = [self.logged(t, "g [A]", 0.44, 0.45, 0.50, 0.51, 100) for t in (1, 21, 41)]
+        self.assertEqual(len(simulate(rows, 100_000)), 1)

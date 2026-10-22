@@ -1,7 +1,7 @@
 # Prediction-market arbitrage: what exists on Kalshi and Polymarket (measured 2026-10-21/22)
 
 Read-only measurement. No orders were placed, no keys were used. All profit figures are after taker fees on every leg
-(Kalshi quadratic 0.07 with per-series multipliers; Polymarket per-market `feeSchedule`), sized to top-of-book depth.
+(Kalshi quadratic 0.07 with per-series multipliers; Polymarket per-market `feeSchedule`; makers are free except on the 160 Kalshi `quadratic_with_maker_fees` series), sized to top-of-book depth.
 
 ## Bottom line
 

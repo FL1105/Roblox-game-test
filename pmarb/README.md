@@ -20,7 +20,8 @@ python -m unittest tests.test_pmarb        # offline tests, hand-checked arithme
 Every profit figure is **after the taker fee on every leg** and sized to the quantity the top of the book supports.
 Kalshi: `ceil(0.07 * multiplier * C * p * (1 - p))` to the cent, multiplier per series from `/series`. Polymarket:
 `C * rate * p * (1 - p)` with the rate and exponent from each market's own `feeSchedule` (crypto 0.07, politics 0.04,
-geopolitics and the sports games checked 0). Makers pay nothing on either venue.
+geopolitics and the sports games checked 0). Makers pay nothing on Polymarket and on Kalshi's plain `quadratic` series, **but 160 Kalshi
+series are `quadratic_with_maker_fees` (makers pay too); check a series' `fee_type` before assuming a free maker leg.
 
 ## Pitfalls this code already hit (each has a regression test)
 

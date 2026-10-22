@@ -6,7 +6,7 @@ import argparse
 import sys
 import time
 
-from . import match, scan, venues, watch
+from . import bankroll, match, scan, sizing, summary, venues, watch
 
 
 def say(msg: str) -> None:
@@ -38,6 +38,23 @@ def watch_cmd(args) -> int:
     return 0
 
 
+def bankroll_cmd(args) -> int:
+    print("Kalshi taker fee per contract (cents), rounded up on the whole order")
+    sizes = [1, 5, 10, 25, 100, 1000]
+    print(f"{'price':>6s} " + " ".join(f"q={q:<6d}" for q in sizes))
+    for p in (0.05, 0.30, 0.50, 0.90, 0.97):
+        print(f"{p:6.2f} " + " ".join(f"{100 * sizing.fee_per_contract(p, q):8.2f}" for q in sizes))
+    if args.log:
+        rows = summary.load(args.log)
+        print("\nLive-game dislocations in the log, first-sight entry, capital locked (a ceiling: instant fills at displayed size)")
+        print(f"{'bankroll':>9s} {'trades':>7s} {'net $':>9s} {'return':>8s}")
+        for b in args.bankrolls:
+            taken = bankroll.simulate(rows, b)
+            net = sum(x[3] for x in taken)
+            print(f"{b:9,.0f} {len(taken):7d} {net:9.2f} {100 * net / b:7.2f}%")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m pmarb", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -47,8 +64,11 @@ def main(argv=None) -> int:
     wa.add_argument("--minutes", type=float, default=30)
     wa.add_argument("--interval", type=float, default=20)
     wa.add_argument("--log", default="pmarb_watch.jsonl")
+    bk = sub.add_parser("bankroll", help="fee rounding by order size, and what a bankroll could have captured from a watch log")
+    bk.add_argument("--log", help="a watch log (jsonl)")
+    bk.add_argument("--bankrolls", type=lambda t: [float(x) for x in t.split(",")], default=[50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000])
     args = ap.parse_args(argv)
-    return {"scan": scan_cmd, "watch": watch_cmd}[args.cmd](args)
+    return {"scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":
