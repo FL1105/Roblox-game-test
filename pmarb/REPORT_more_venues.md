@@ -50,3 +50,42 @@ A recorder for 24-48 hours of simultaneous order books across ~100-200 windows, 
 latency (enter on the quote a few seconds after first sight, require the gap to persist) and a fill haircut; then paper-trade
 before any money. Practical needs: Kalshi API key (orders and its live feed), a Polymarket wallet with USDC on Polygon, and
 a jurisdiction where you may use both. One 2-hour recording was started when this was written.
+
+## 4. Follow-up: 115-minute recording, conservative replay, and a competition check
+
+Recording `btc3c`: 115 minutes, 8 windows settled (04:45Z-06:30Z = 00:45-02:30 New York, so **overnight hours only**), 682 usable polls,
+median skew between the three venues' answers 0.30 s. All 8 windows resolved identically on Kalshi, Polymarket and Limitless.
+
+**Pre-registered replay** (`PREREGISTERED_replay.txt`, committed before the data was examined): execute one poll (6 s) after
+the signal, in the same orientation at that poll's prices, at 50% of the displayed size, only if still profitable after fees.
+
+| scenario | signals | executed | realised |
+|---|---|---|---|
+| 6 s delay, 50% size (pre-registered) | 83 | 55 | **+$390.51** (payoffs 0/1/2 = 0/55/0) |
+| 12 s delay, 50% size | 83 | 49 | +$333.48 |
+| 6 s delay, 25% size | 83 | 54 | +$194.26 |
+| no delay, full size (upper bound) | 83 | 83 | +$888.58 |
+
+The pre-registered "still alive" test passes (positive after the delay and haircut; 55 of 83 signals, 66%, survived the delay).
+Median trade: 135 sets, $3.04 net.
+
+**Competition check (public trade tapes, nothing placed).** For each of the 55 hedges: did anyone else lift the same side at the
+same or a better price between our signal and our execution?
+* Kalshi (27,000-45,000 trades per window, so a heavily automated market): **50 of 55 saw no competing taker at all**; only 5 of 55
+  saw at least our size taken.
+* Polymarket (300-1,000 trades per window): 39 of 55 saw none; 4 of 55 saw at least our size taken.
+The stale-looking quotes mostly sat there for the 6 seconds I assumed it would take me to act. That supports them being
+available, but it is not proof that my orders would have filled: it says nothing about order latency, rejections or taker delays.
+
+**Tail risk, which this recording could not test (0 disagreements in 8 windows).** The hedges deployed $350 to $2,550 per window
+(mean ~$1,430). If the venues had disagreed, one window's book would have swung from about +$1,139 to -$2,088 depending on the
+direction. Historically (1,200 windows) disagreement happened 1.33% of the time, 12 windows "Kalshi Up / Polymarket Down" (which
+favoured these hedges on average) against 4 the other way. At 96 windows a day that is about one such window a day, so a single day
+is dominated by that tail, not by the average gain of ~$56 per window.
+
+**Why I am not extrapolating to dollars per day:** ~$56 on ~$1,430 deployed is ~4% per 15-minute window. That is large enough
+that the honest default assumption is that something real is missing: orders that do not fill at the displayed price, taker
+delays on Polymarket / Limitless, cancel-on-fill behaviour, different conditions in US daytime, or size that vanishes when touched.
+Only a live test with small orders (which needs a Kalshi API key and a funded Polymarket wallet) can settle that.
+
+**Status:** a documented, repeatable lead with no counter-evidence so far, on a sample of 10 settled live windows. Not a proven edge.

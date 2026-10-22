@@ -355,3 +355,37 @@ class LeadLag(unittest.TestCase):
         self.assertEqual([r["t"] for r in first_sight_entries(rows)], [6, 24])
         far = [self.row(0, 0.5, 0.5, 1.0), self.row(60, 0.5, 0.5, 1.0)]       # a minute apart: two runs, not one
         self.assertEqual(profitable_runs(far), [1, 1])
+
+
+class Replay(unittest.TestCase):
+    def poll(self, t, k_ask, p_bid, close=1000, left=300, size=400):
+        q = lambda bid, ask: {"bid": bid, "bid_size": size, "ask": ask, "ask_size": size, "min": 1}
+        quotes = {"kalshi": q(k_ask - 0.01, k_ask), "poly": q(p_bid, p_bid + 0.01), "limitless": q(0.45, 0.50)}
+        from pmarb.btc3 import hedge_total
+        from pmarb.replay import FEES
+        best = hedge_total("kalshi", quotes["kalshi"], "poly", quotes["poly"], FEES["kalshi"], FEES["poly"])
+        return {"t": t, "close": close, "left_s": left, "quotes": quotes, "skew_s": 0.2, "best": best}
+
+    def test_a_signal_executes_one_poll_late_at_half_size(self):
+        from pmarb.replay import replay
+        rows = [self.poll(0, 0.60, 0.50), self.poll(6, 0.40, 0.60), self.poll(12, 0.40, 0.60)]     # profitable from the second poll
+        trades, n = replay(rows, delay_polls=1, fill=0.5)
+        self.assertEqual((n, len(trades)), (1, 1))
+        self.assertEqual(trades[0]["sets"], 200)             # half of the displayed 400
+        self.assertEqual(trades[0]["t"] - trades[0]["signal_t"], 6)
+
+    def test_a_gap_that_closes_during_the_delay_is_not_traded(self):
+        from pmarb.replay import replay
+        rows = [self.poll(0, 0.60, 0.50), self.poll(6, 0.40, 0.60), self.poll(12, 0.60, 0.50)]
+        trades, n = replay(rows, delay_polls=1, fill=0.5)
+        self.assertEqual((n, len(trades)), (1, 0))
+
+    def test_payoffs_follow_the_recorded_outcomes(self):
+        from pmarb.replay import realised
+        t = {"close": 1000, "yes_on": "kalshi", "no_on": "poly", "sets": 100, "net": 10.0}
+        agree = realised([t], {1000: {"kalshi": True, "poly": True}})
+        self.assertEqual((agree["payoffs"][1], agree["realised"]), (1, 10.0))
+        band = realised([t], {1000: {"kalshi": False, "poly": True}})          # Kalshi Down, Polymarket Up: both legs lose
+        self.assertEqual((band["payoffs"][0], band["realised"]), (1, 10.0 - 100))
+        lucky = realised([t], {1000: {"kalshi": True, "poly": False}})
+        self.assertEqual((lucky["payoffs"][2], lucky["realised"]), (1, 10.0 + 100))

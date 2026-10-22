@@ -123,13 +123,13 @@ def _lim_now(slug: str):
     return time.time(), ob
 
 
-def hedge_total(a: str, qa: dict, b: str, qb: dict, fa: Fee | None, fb: Fee | None) -> dict | None:
-    """YES on venue a at its ask + NO on venue b at 1 - its bid, sized to the thinner side and each venue's minimum order.
+def hedge_total(a: str, qa: dict, b: str, qb: dict, fa: Fee | None, fb: Fee | None, fill: float = 1.0) -> dict | None:
+    """YES on venue a at its ask + NO on venue b at 1 - its bid, sized to `fill` x the thinner side and each venue's minimum order.
 
     Returns sets, gross and net dollars (taker fees on both legs; Limitless takes its fee in tokens)."""
     if qa["ask"] is None or qb["bid"] is None:
         return None
-    qty = math.floor(min(qa["ask_size"], qb["bid_size"]))
+    qty = math.floor(fill * min(qa["ask_size"], qb["bid_size"]))
     if qty < max(qa.get("min", 1), qb.get("min", 1)):
         return None
     pa, pb = qa["ask"], 1.0 - qb["bid"]
