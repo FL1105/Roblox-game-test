@@ -1,0 +1,22 @@
+PRE-REGISTRATION: conservative replay of the 115-minute concurrent BTC 15-minute recording (btc3c)
+Written 2026-10-22 before the recording was examined.
+
+DATA: every poll (6 s apart) of the three venues' books for the current window, with sizes and a per-venue arrival skew.
+Usable poll: all three venues two-sided, 30-840 s left, every mid between 3c and 97c.
+
+SIGNAL: the first poll of each run of polls whose best hedge (YES on one venue at its ask, NO on another at 1 - its bid) has
+a positive net after each venue's taker fee. Same fee model as before (Kalshi 0.07 p(1-p) cent-rounded; Polymarket crypto
+0.07 p(1-p); Limitless buy curve taken in tokens).
+
+LATENCY AND FILL HAIRCUT (the point of this replay; fixed here, not tuned)
+* Execution happens at the NEXT poll (about 6 s after the signal) at that poll's prices and sizes, in the same orientation.
+  If the hedge is no longer profitable after fees there, the trade is not made.
+* Sets = 50% of the smaller of the two displayed sizes at the execution poll, rounded down, and at least each venue's minimum order.
+  Sensitivity: execution 12 s after the signal (two polls later), and 25% of displayed size.
+
+SCORING: payoff per set = [YES venue resolved Up] + [NO venue resolved Down], using the three venues' recorded outcomes.
+Realised net = modeled net + sets x (payoff - 1). Report trades, modeled and realised totals, payoff counts 0/1/2 and per-window totals.
+
+DECISION: this recording covers about 8 windows, so it can show whether the lead survives a delay and a haircut, not prove an edge.
+The lead is "still alive" only if realised net is positive after the latency and 50% haircut AND at least half of the signals
+survive the 6 s delay. Nothing here justifies real money; the next step would be a longer recording and paper trading.
