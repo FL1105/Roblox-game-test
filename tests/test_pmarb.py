@@ -433,10 +433,51 @@ class PaperBotTests(unittest.TestCase):
         b = self.bot(); b.on_row(self.row(6, 0.02, 0.10))                    # prices outside 5-95c
         self.assertIsNone(b.pending)
 
-    def test_loss_stop_halts_new_trades(self):
-        b = self.bot(daily_loss_stop=-10.0); b.realised = -50.0
+    def test_loss_stop_halts_new_trades_for_the_day_only(self):
+        today = 1792800000                                                  # 2026-10-23 UTC
+        b = self.bot(daily_loss_stop=-10.0)
+        b.settled.append({"close": today + 600, "realised": -50.0})
+        b.on_row(self.row(6, 0.40, 0.60), now=today + 3600)
+        self.assertIsNone(b.pending)
+        self.assertIn("loss stop", b.reason)
+        old = self.bot(daily_loss_stop=-10.0)
+        old.settled.append({"close": today - 86400, "realised": -50.0})      # yesterday's loss does not block today
+        old.on_row(self.row(6, 0.40, 0.60), now=today + 3600)
+        self.assertIsNotNone(old.pending)
+
+    def test_pause_stops_new_signals(self):
+        b = self.bot(); b.paused = True
         b.on_row(self.row(6, 0.40, 0.60))
         self.assertIsNone(b.pending)
+        self.assertIn("PAUSED", b.reason)
+        b.paused = False
+        b.on_row(self.row(12, 0.40, 0.60))
+        self.assertIsNotNone(b.pending)
+
+    def test_the_reason_explains_why_it_is_idle(self):
+        b = self.bot()
+        b.on_row(self.row(6, 0.50, 0.49))
+        self.assertIn("no profitable hedge", b.reason)
+        b.on_row(self.row(12, 0.40, 0.60, left=20))
+        self.assertIn("no new trades", b.reason)
+        b.on_row(self.row(18, 0.40, 0.60, skew=4.0))
+        self.assertIn("too far apart", b.reason)
+
+    def test_state_is_restored_from_the_ledger(self):
+        import json, os, tempfile
+        recs = [{"event": "trade", "close": 1000, "t": 5, "sets": 10, "cost": 8.0, "net_if_agree": 1.5, "yes_on": "kalshi", "no_on": "poly"},
+                {"event": "trade", "close": 1900, "t": 905, "sets": 10, "cost": 8.0, "net_if_agree": 1.5, "yes_on": "kalshi", "no_on": "poly"},
+                {"event": "settled", "close": 1000, "payoff": 1, "realised": 1.5, "sets": 10, "cost": 8.0, "yes_on": "kalshi", "no_on": "poly"}]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "ledger.jsonl")
+            with open(path, "w") as f:
+                f.write("\n".join(json.dumps(r) for r in recs) + "\nnot json\n")
+            b = self.bot(); n = b.restore(path)
+        self.assertEqual(n, 3)
+        self.assertAlmostEqual(b.realised, 1.5)
+        self.assertEqual(list(b.trades), [1900])                              # the unsettled window is open again
+        self.assertEqual(len(b.all_trades), 2)
+        self.assertEqual(self.bot().restore("/nonexistent/ledger.jsonl"), 0)
 
     def test_settlement_pays_zero_one_or_two(self):
         b = self.bot(); b.on_row(self.row(6, 0.40, 0.60)); t = b.on_row(self.row(12, 0.40, 0.60))
@@ -446,3 +487,113 @@ class PaperBotTests(unittest.TestCase):
         band = b2.settle(1000, {"kalshi": False, "poly": True})              # YES Kalshi loses, NO Polymarket loses
         self.assertAlmostEqual(band, t2["net_if_agree"] - t2["sets"])
         self.assertEqual(b2.open_cost(), 0.0)
+
+
+class Dashboard(unittest.TestCase):
+    def runtime(self, **limits):
+        import tempfile
+        from pmarb.bot import Limits, PaperBot
+        from pmarb.dashboard import Runtime
+        d = tempfile.mkdtemp()
+        bot = PaperBot(Limits(**limits), d + "/ledger.jsonl")
+        return Runtime(bot, interval=6.0, actuals_path=d + "/actuals.json")
+
+    def row(self, t, k_ask, p_bid, close=900, left=300):
+        q = lambda bid, ask: {"bid": bid, "bid_size": 400, "ask": ask, "ask_size": 400, "min": 1}
+        return {"t": t, "close": close, "left_s": left, "skew_s": 0.3,
+                "quotes": {"kalshi": q(k_ask - 0.01, k_ask), "poly": q(p_bid, p_bid + 0.01), "limitless": q(0.4, 0.5)}}
+
+    def test_tick_trades_then_settles_and_the_state_adds_up(self):
+        from pmarb.dashboard import build_state
+        rt = self.runtime()
+        rows = iter([self.row(0, 0.50, 0.49), self.row(6, 0.40, 0.60), self.row(12, 0.40, 0.60)])
+        for i in range(3):
+            rt.tick(poll=lambda: [next(rows)], outcomes=lambda c: None, now=1000 + i)
+        s = build_state(rt, now=1003)
+        self.assertEqual(s["totals"]["trades"], 1)
+        self.assertGreater(s["totals"]["open_cost"], 0)
+        self.assertEqual(len(s["open"]), 1)
+        self.assertEqual(s["totals"]["windows_settled"], 0)
+        rt.tick(poll=lambda: [], outcomes=lambda c: {"kalshi": True, "poly": True}, now=900 + 200)      # past close + 150 s
+        s = build_state(rt, now=1100)
+        self.assertEqual((s["totals"]["windows_settled"], s["totals"]["windows_positive"], s["totals"]["payoffs"]), (1, 1, [0, 1, 0]))
+        self.assertGreater(s["totals"]["all_time"], 0)
+        self.assertEqual(s["open"], [])
+        self.assertEqual(len(s["equity"]), 1)
+        self.assertAlmostEqual(s["equity"][0][1], round(s["totals"]["all_time"], 2))
+
+    def test_a_failing_poll_does_not_kill_the_runner(self):
+        rt = self.runtime()
+        def boom(): raise RuntimeError("network down")
+        rt.tick(poll=boom, outcomes=lambda c: None, now=1)
+        self.assertEqual((rt.polls, rt.errors), (1, 1))
+        self.assertIn("poll failed", rt.log[-1][1])
+
+    def test_actuals_are_saved_and_compared_with_paper(self):
+        from pmarb.dashboard import Runtime, build_state
+        rt = self.runtime()
+        rt.bot.all_trades.append({"close": 900, "cost": 80.0, "net_if_agree": 10.0, "sets": 100, "t": 600})
+        rt.bot.settled.append({"close": 900, "payoff": 1, "realised": 10.0})
+        rt.set_actual(900, 7.5)
+        s = build_state(rt, now=2000)
+        self.assertEqual(s["windows"][0]["actual"], 7.5)
+        self.assertAlmostEqual(s["totals"]["actual_sum"] - s["totals"]["paper_sum_actual_windows"], -2.5)
+        again = Runtime(rt.bot, actuals_path=rt.actuals_path)                  # survives a restart
+        self.assertEqual(again.actuals, {"900": 7.5})
+        rt.set_actual(900, None)
+        self.assertEqual(build_state(rt, now=2000)["windows"][0]["actual"], None)
+
+    def test_stale_feed_is_flagged(self):
+        from pmarb.dashboard import build_state
+        rt = self.runtime()
+        self.assertTrue(build_state(rt, now=1000)["health"]["stale"])           # nothing polled yet
+        rt.last_poll_t = 990.0
+        self.assertFalse(build_state(rt, now=1000)["health"]["stale"])
+        self.assertTrue(build_state(rt, now=1100)["health"]["stale"])
+
+    def serve(self):
+        import threading
+        from pmarb.dashboard import make_server
+        rt = self.runtime()
+        srv = make_server(rt, "127.0.0.1", 0)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close); self.addCleanup(srv.shutdown)
+        return rt, srv.server_address[1]
+
+    def request(self, port, method, path, body=None, headers=None):
+        import http.client, json
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request(method, path, body=None if body is None else json.dumps(body), headers=headers or {})
+        r = c.getresponse(); data = r.read(); c.close()
+        return r.status, data
+
+    def test_the_server_only_talks_to_the_local_browser(self):
+        import json
+        rt, port = self.serve()
+        status, page = self.request(port, "GET", "/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"PAPER", page)
+        status, data = self.request(port, "GET", "/api/state")
+        self.assertEqual((status, json.loads(data)["mode"]), (200, "PAPER"))
+        self.assertEqual(self.request(port, "GET", "/api/state", headers={"Host": "evil.example.com"})[0], 403)         # DNS-rebinding style access
+        self.assertEqual(self.request(port, "GET", "/nope")[0], 404)
+        self.assertEqual(self.request(port, "POST", "/api/pause", {"paused": True}, {"Content-Type": "text/plain"})[0], 415)
+        self.assertEqual(self.request(port, "POST", "/api/pause", {"paused": "yes"}, {"Content-Type": "application/json"})[0], 400)
+
+    def test_pause_and_actual_endpoints(self):
+        rt, port = self.serve()
+        js = {"Content-Type": "application/json"}
+        self.assertEqual(self.request(port, "POST", "/api/pause", {"paused": True}, js)[0], 200)
+        self.assertTrue(rt.bot.paused)
+        self.assertEqual(self.request(port, "POST", "/api/pause", {"paused": False}, js)[0], 200)
+        self.assertFalse(rt.bot.paused)
+        self.assertEqual(self.request(port, "POST", "/api/actual", {"close": 900, "pnl": -3.25}, js)[0], 200)
+        self.assertEqual(rt.actuals, {"900": -3.25})
+        self.assertEqual(self.request(port, "POST", "/api/actual", {"close": "x", "pnl": 1}, js)[0], 400)
+
+    def test_the_page_renders_data_as_text_and_asks_for_no_secrets(self):
+        from pmarb.dashboard import STATIC
+        html = STATIC.read_text().lower()
+        self.assertNotIn("innerhtml", html)                                    # venue data is rendered with textContent only
+        for bad in ('type="password"', "api key", "private key", "secret", "seed phrase", "wallet"):
+            self.assertNotIn(bad, html)

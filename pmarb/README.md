@@ -8,6 +8,8 @@ python -m pmarb watch --minutes 40         # poll exactly-matched games and live
 python -m pmarb btc3 --minutes 45          # the same BTC 15-minute window on Kalshi, Polymarket and Limitless, fetched concurrently, with sizes
 python -m pmarb band --windows W --history H   # score the pre-registered 'sell the band' hedge (see PREREGISTERED_band.txt)
 python -m pmarb bankroll --log <watch log> # fee rounding by order size; what a bankroll could capture
+python -m pmarb ui                         # PAPER bot + live P&L dashboard at http://127.0.0.1:8766/ (Windows: double-click start_pmarb.bat)
+python -m pmarb bot --minutes 110          # the same paper bot without the dashboard, printing to the console
 python -m unittest tests.test_pmarb        # offline tests, hand-checked arithmetic
 ```
 
@@ -36,3 +38,17 @@ series are `quadratic_with_maker_fees` (makers pay too); check a series' `fee_ty
 * Kalshi 15-minute BTC and Polymarket's BTC up/down settle on different sources (BRTI 60 s average vs Chainlink TWAP) with
   different start references. A gap there is basis risk, not arbitrage: the hedge can pay $0 (measured: the two
   disagreed on 1.33% of 1,200 windows).
+
+
+## The live dashboard (`python -m pmarb ui`)
+
+Runs the paper bot against the live Kalshi and Polymarket books and shows its P&L as it happens: today and all-time realised, open
+positions, an equity curve, per-window results with the payoff counts (any 0 or 2 is a venue disagreement), the limits in use, and a
+plain-English line for why the bot is or is not trading. **It places no orders and has no key fields.** It must run on your own
+computer, because Kalshi rejects browser requests (any `Origin` header gets a 403), so the page talks to a small local Python
+server instead of the venues. The server binds to 127.0.0.1, refuses foreign Host headers and takes only JSON POSTs.
+
+* The ledger (`pmarb_bot_ledger.jsonl`) is appended to and restored on start, so open positions and history survive a restart.
+* "Pause new trades" stops new paper trades; open positions still settle. The daily loss stop is per UTC day.
+* To compare with real trading, type your actual P&L for each window in the table; the last column is actual minus paper.
+* Options: `--port`, `--interval`, `--ledger`, `--max-sets`, `--max-window-cost`, `--max-open-cost`, `--loss-stop`, `--no-browser`.

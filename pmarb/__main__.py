@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 import time
+import webbrowser
 
-from . import band, bankroll, bot, btc3, match, scan, sizing, summary, venues, watch
+from . import band, bankroll, bot, btc3, dashboard, match, scan, sizing, summary, venues, watch
 
 
 def say(msg: str) -> None:
@@ -74,6 +76,27 @@ def bot_cmd(args) -> int:
     return 0
 
 
+def ui_cmd(args) -> int:
+    limits = bot.Limits(max_sets=args.max_sets, max_window_cost=args.max_window_cost, max_open_cost=args.max_open_cost, daily_loss_stop=-abs(args.loss_stop))
+    paper = bot.PaperBot(limits, args.ledger)
+    restored = paper.restore(args.ledger)
+    rt = dashboard.Runtime(paper, args.interval, args.ledger + ".actuals.json")
+    server = dashboard.make_server(rt, "127.0.0.1", args.port)
+    threading.Thread(target=rt.run, daemon=True).start()
+    url = f"http://127.0.0.1:{args.port}/"
+    print(f"PAPER bot + live dashboard at {url}  (ledger {args.ledger}, {restored} lines restored). No orders are placed. Ctrl+C to stop.")
+    if not args.no_browser:
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nstopping")
+    finally:
+        rt.stop.set()
+        server.server_close()
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m pmarb", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -102,8 +125,17 @@ def main(argv=None) -> int:
     bo.add_argument("--max-open-cost", type=float, default=1000.0)
     bo.add_argument("--loss-stop", type=float, default=300.0)
     bo.add_argument("--live", action="store_true", help="not implemented; accepted only to say so")
+    ui = sub.add_parser("ui", help="run the PAPER bot with a live P&L dashboard in your browser (loopback only; places no orders)")
+    ui.add_argument("--port", type=int, default=8766)
+    ui.add_argument("--interval", type=float, default=6)
+    ui.add_argument("--ledger", default="pmarb_bot_ledger.jsonl", help="appended to; also restored from on start")
+    ui.add_argument("--max-sets", type=int, default=100)
+    ui.add_argument("--max-window-cost", type=float, default=300.0)
+    ui.add_argument("--max-open-cost", type=float, default=1000.0)
+    ui.add_argument("--loss-stop", type=float, default=300.0, help="stop opening trades once today's realised loss reaches this many dollars")
+    ui.add_argument("--no-browser", action="store_true")
     args = ap.parse_args(argv)
-    return {"bot": bot_cmd, "band": band_cmd, "scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd, "btc3": btc3_cmd}[args.cmd](args)
+    return {"ui": ui_cmd, "bot": bot_cmd, "band": band_cmd, "scan": scan_cmd, "watch": watch_cmd, "bankroll": bankroll_cmd, "btc3": btc3_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":
